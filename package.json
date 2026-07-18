@@ -1,0 +1,24 @@
+{
+  "name": "agents-lint",
+  "version": "0.0.0",
+  "description": "Reference-integrity linter for AGENTS.md / llms.txt — catch commands, scripts, and paths that no longer exist. Language-agnostic, runs in CI.",
+  "type": "module",
+  "bin": {
+    "agents-lint": "src/check.mjs"
+  },
+  "scripts": {
+    "poc": "node src/check.mjs examples/AGENTS.sample.md",
+    "test": "node --test"
+  },
+  "keywords": [
+    "agents.md",
+    "llms.txt",
+    "ai",
+    "agent",
+    "linter",
+    "ci",
+    "reference-integrity",
+    "mcp"
+  ],
+  "license": "MIT"
+}

@@ -1,0 +1,17 @@
+name: 'agents-lint'
+description: 'Fail CI when your AGENTS.md / llms.txt points at commands, scripts, or paths that no longer exist.'
+author: 'agents-lint'
+branding:
+  icon: 'check-circle'
+  color: 'green'
+inputs:
+  files:
+    description: 'Space-separated files to check. Default: auto-detect AGENTS.md / llms.txt / CLAUDE.md at the repo root.'
+    required: false
+    default: ''
+runs:
+  using: 'composite'
+  steps:
+    - name: Run agents-lint
+      shell: bash
+      run: node "$GITHUB_ACTION_PATH/src/check.mjs" ${{ inputs.files }}
