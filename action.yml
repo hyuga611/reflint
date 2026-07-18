@@ -14,4 +14,9 @@ runs:
   steps:
     - name: Run agents-lint
       shell: bash
-      run: node "$GITHUB_ACTION_PATH/src/check.mjs" ${{ inputs.files }}
+      # Pass the caller input via env (NOT ${{ }} expanded into the script) to avoid
+      # GitHub Actions template/shell injection. $FILES is intentionally unquoted so
+      # multiple space-separated filenames split into separate argv.
+      env:
+        FILES: ${{ inputs.files }}
+      run: node "$GITHUB_ACTION_PATH/src/check.mjs" $FILES
