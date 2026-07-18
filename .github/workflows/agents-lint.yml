@@ -3,12 +3,15 @@ on:
   push:
   pull_request:
 
+# least privilege: this workflow only needs to read the repo
+permissions:
+  contents: read
+
 jobs:
   agents-lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # このリポジトリ自身の Action で、自分の AGENTS.md を検査（ドッグフーディング）
       - uses: ./
 
   test:
