@@ -31,8 +31,9 @@ Findings show up as inline PR annotations, and the job fails (exit 1) so a stale
 ## Use as a CLI / ローカルで使う
 
 ```bash
-npx reflint            # AGENTS.md / llms.txt / CLAUDE.md を自動検出
-npx reflint docs/AGENTS.md llms.txt
+npx @hyuga/reflint            # AGENTS.md / llms.txt / CLAUDE.md を自動検出
+npx @hyuga/reflint docs/AGENTS.md llms.txt
+# npm i -g @hyuga/reflint すると `reflint` コマンドで使えます
 ```
 
 What it catches:
