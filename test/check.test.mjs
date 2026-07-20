@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { scan, looksLikePath } from '../src/check.mjs';
+import reflintRule, { toTextlintErrors, lineStartIndex } from '../src/textlint-rule.mjs';
 
 test('存在しない npm script を検出', () => {
   const f = scan('ビルド: `npm run build`', { scripts: new Set(['poc', 'test']), exists: () => true });
@@ -85,4 +86,39 @@ test('codeBlocks: フェンスマーカ行・npm/flag・拡張子なしは誤検
   // build は script 未登録なら 1 件（既存の script 検査）。パスは app.js のみ検査対象。
   const f = scan(body, { scripts: new Set(['build']), exists: (p) => p === 'app.js', codeBlocks: true });
   assert.equal(f.length, 0);
+});
+
+// --- textlint ルールアダプタ ---
+
+test('lineStartIndex: 行頭の文字インデックス', () => {
+  const t = 'a\nbb\nccc';
+  assert.equal(lineStartIndex(t, 1), 0);
+  assert.equal(lineStartIndex(t, 2), 2);
+  assert.equal(lineStartIndex(t, 3), 5);
+});
+
+test('toTextlintErrors: message に reflint: 接頭辞と絶対 index', () => {
+  const out = toTextlintErrors([{ ln: 2, msg: 'x' }], 'a\nb');
+  assert.equal(out.length, 1);
+  assert.match(out[0].message, /^reflint: /);
+  assert.equal(out[0].index, 2);
+});
+
+test('textlint rule: Document で findings を report する（mock context）', () => {
+  const reported = [];
+  const ctx = {
+    Syntax: { Document: 'Document' },
+    RuleError: class {
+      constructor(message, opts) {
+        this.message = message;
+        Object.assign(this, opts);
+      }
+    },
+    report: (node, err) => reported.push(err),
+    getSourceCode: () => ({ text: '参照 `src/missing.ts`' }),
+  };
+  const handlers = reflintRule(ctx, { exists: (p) => p !== 'src/missing.ts', scripts: null });
+  handlers['Document']({ type: 'Document' });
+  assert.equal(reported.length, 1);
+  assert.match(reported[0].message, /missing\.ts/);
 });

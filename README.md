@@ -43,13 +43,32 @@ What it catches:
 - `npm run <script>` / `pnpm <script>` etc. that isn't in `package.json` (suggests the nearest name) — for JS repos
 - Exit code 1 when anything is wrong = a CI gate
 
+## textlint と併用 / textlint rule (experimental)
+
+Already run [textlint](https://textlint.org/) over your docs? reflint ships a textlint-compatible rule at `@hyuga/reflint/textlint-rule`, so you can fold the referential-integrity check into your existing textlint pass instead of adding a separate CI step.
+
+```js
+import { TextlintKernel } from "@textlint/kernel";
+import markdown from "@textlint/textlint-plugin-markdown";
+import reflint from "@hyuga/reflint/textlint-rule";
+
+const kernel = new TextlintKernel();
+await kernel.lintText(text, {
+  ext: ".md",
+  plugins: [{ pluginId: "markdown", plugin: markdown }],
+  rules: [{ ruleId: "reflint", rule: reflint, options: { codeBlocks: false } }],
+});
+```
+
+`markdown-link-check` checks whether *external links are alive*; reflint checks whether *repo-relative references resolve*. They're complementary — run both.
+
 ## Roadmap
 
 - [x] Reference-integrity core: file paths (any language) + npm scripts (zero-dep) — `src/check.mjs`
 - [x] **GitHub Action** (`action.yml`) + inline PR annotations + self-CI
 - [x] `llms.txt` markdown-link referential integrity — repo-relative link targets must resolve (the wedge no one else covers in CI)
 - [x] Paths inside fenced code blocks — opt-in `--code-blocks` (extension-bearing, repo-relative paths only, to stay false-positive-free)
-- [ ] textlint / markdown-link-check エコシステムへの相乗り
+- [x] textlint rule adapter (`@hyuga/reflint/textlint-rule`, experimental) — reuse reflint inside an existing textlint pass
 
 ## Dev
 
