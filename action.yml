@@ -1,5 +1,5 @@
-name: 'reflint'
-description: 'Fail CI when your AGENTS.md / llms.txt / CLAUDE.md points at commands, scripts, or paths that no longer exist. Language-agnostic.'
+name: 'reflint reference-integrity linter'
+description: 'Fail CI when AGENTS.md/llms.txt/CLAUDE.md reference commands or paths that no longer exist. Language-agnostic, zero-dep.'
 author: 'hyuga611'
 branding:
   icon: 'check-circle'
