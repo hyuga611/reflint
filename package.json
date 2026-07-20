@@ -6,6 +6,10 @@
   "bin": {
     "reflint": "src/check.mjs"
   },
+  "files": [
+    "src",
+    "action.yml"
+  ],
   "scripts": {
     "poc": "node src/check.mjs examples/AGENTS.sample.md",
     "test": "node --test"
