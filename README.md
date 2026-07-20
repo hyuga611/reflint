@@ -34,7 +34,9 @@ Findings show up as inline PR annotations, and the job fails (exit 1) so a stale
 npx @hyuga/reflint            # AGENTS.md / llms.txt / CLAUDE.md を自動検出
 npx @hyuga/reflint docs/AGENTS.md llms.txt
 npx @hyuga/reflint --code-blocks   # ```コードブロック``` 内の拡張子付きパスも検査（opt-in）
+npx @hyuga/reflint --format json   # 機械可読な JSON 出力（エディタ拡張・他ツール連携の下地）
 # npm i -g @hyuga/reflint すると `reflint` コマンドで使えます
+# monorepo では、対象ファイルに最も近い package.json の scripts を自動で参照します
 ```
 
 What it catches:
@@ -69,6 +71,7 @@ await kernel.lintText(text, {
 - [x] `llms.txt` markdown-link referential integrity — repo-relative link targets must resolve (the wedge no one else covers in CI)
 - [x] Paths inside fenced code blocks — opt-in `--code-blocks` (extension-bearing, repo-relative paths only, to stay false-positive-free)
 - [x] textlint rule adapter (`@hyuga/reflint/textlint-rule`, experimental) — reuse reflint inside an existing textlint pass
+- [x] `--format json` machine-readable output + monorepo resolution (nearest `package.json`, path found from the file's dir or repo root)
 
 ## Dev
 

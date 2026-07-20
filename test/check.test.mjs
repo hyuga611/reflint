@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { scan, looksLikePath } from '../src/check.mjs';
+import { scan, looksLikePath, toJson } from '../src/check.mjs';
 import reflintRule, { toTextlintErrors, lineStartIndex } from '../src/textlint-rule.mjs';
 
 test('存在しない npm script を検出', () => {
@@ -121,4 +121,23 @@ test('textlint rule: Document で findings を report する（mock context）',
   handlers['Document']({ type: 'Document' });
   assert.equal(reported.length, 1);
   assert.match(reported[0].message, /missing\.ts/);
+});
+
+// --- toJson (--format json) ---
+
+test('toJson: results を機械可読な形へ', () => {
+  const r = [
+    { file: 'AGENTS.md', findings: [{ ln: 3, kind: 'path', msg: 'x' }] },
+    { file: 'llms.txt', findings: [] },
+  ];
+  const j = toJson(r);
+  assert.equal(j.ok, false);
+  assert.equal(j.count, 1);
+  assert.equal(j.findings[0].file, 'AGENTS.md');
+  assert.equal(j.findings[0].line, 3);
+  assert.equal(j.findings[0].message, 'x');
+});
+
+test('toJson: 空なら ok:true', () => {
+  assert.deepEqual(toJson([{ file: 'a', findings: [] }]), { ok: true, count: 0, findings: [] });
 });

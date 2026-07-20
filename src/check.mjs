@@ -8,7 +8,7 @@
 //   node src/check.mjs [file ...]     # 省略時は AGENTS.md / llms.txt / CLAUDE.md を自動検出
 
 import { readFileSync, existsSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { resolve, join, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 // npm/pnpm/yarn が定義なしでも動く組み込みサブコマンドは除外する
@@ -109,45 +109,95 @@ export function scan(text, { scripts = null, exists = () => true, codeBlocks = f
   return findings;
 }
 
-function loadScripts(root) {
+function loadScripts(dir) {
   try {
-    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
+    const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
     return new Set(Object.keys(pkg.scripts ?? {}));
   } catch {
     return null;
   }
 }
 
+/** monorepo 対応：ファイルの位置から上へ辿り、最も近い package.json の scripts を返す。 */
+function nearestScripts(startDir, root) {
+  let dir = resolve(startDir);
+  const rootAbs = resolve(root);
+  for (let i = 0; i < 40; i++) {
+    if (existsSync(join(dir, 'package.json'))) return loadScripts(dir);
+    if (dir === rootAbs) break;
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
+}
+
+/** results（[{file, findings}]）を機械可読な JSON 形へ（純粋・テスト可能）。 */
+export function toJson(results) {
+  const findings = results.flatMap(({ file, findings }) =>
+    findings.map((f) => ({ file, line: f.ln || 1, kind: f.kind, message: f.msg })),
+  );
+  return { ok: findings.length === 0, count: findings.length, findings };
+}
+
 export function main(argv) {
   const inActions = process.env.GITHUB_ACTIONS === 'true';
   const root = process.cwd();
-  const codeBlocks = argv.includes('--code-blocks') || process.env.REFLINT_CODE_BLOCKS === '1';
-  const args = argv.filter((a) => a !== '--' && a !== '--code-blocks');
-  const files = args.length ? args : DEFAULT_FILES.filter((f) => existsSync(join(root, f)));
+  let codeBlocks = argv.includes('--code-blocks') || process.env.REFLINT_CODE_BLOCKS === '1';
+  let asJson = argv.includes('--json') || process.env.REFLINT_FORMAT === 'json';
+  const files0 = [];
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--' || a === '--code-blocks' || a === '--json') continue;
+    if (a === '--format') {
+      if (argv[i + 1] === 'json') asJson = true;
+      i++;
+      continue;
+    }
+    if (a.startsWith('--format=')) {
+      if (a.slice(9) === 'json') asJson = true;
+      continue;
+    }
+    files0.push(a);
+  }
+  const files = files0.length ? files0 : DEFAULT_FILES.filter((f) => existsSync(join(root, f)));
 
   if (files.length === 0) {
-    console.log('reflint: 対象ファイルなし（AGENTS.md / llms.txt / CLAUDE.md）。スキップ。');
+    if (asJson) console.log(JSON.stringify({ ok: true, count: 0, findings: [] }, null, 2));
+    else console.log('reflint: 対象ファイルなし（AGENTS.md / llms.txt / CLAUDE.md）。スキップ。');
     return 0;
   }
 
-  const scripts = loadScripts(root);
-  const exists = (p) => existsSync(resolve(root, p));
-  let total = 0;
-
+  const results = [];
   for (const file of files) {
+    const abs = resolve(root, file);
     let text;
     try {
-      text = readFileSync(resolve(root, file), 'utf8');
+      text = readFileSync(abs, 'utf8');
     } catch {
-      console.error(`reflint: ${file} を読めません`);
+      if (asJson) console.log(JSON.stringify({ ok: false, error: `cannot read ${file}` }, null, 2));
+      else console.error(`reflint: ${file} を読めません`);
       return 2;
     }
-    const findings = scan(text, { scripts, exists, codeBlocks });
+    // monorepo: scripts は最も近い package.json、パス実在はファイル位置 or リポ root で解決。
+    const fileDir = dirname(abs);
+    const scripts = nearestScripts(fileDir, root);
+    const exists = (p) => existsSync(resolve(fileDir, p)) || existsSync(resolve(root, p));
+    results.push({ file, findings: scan(text, { scripts, exists, codeBlocks }) });
+  }
+
+  const total = results.reduce((n, r) => n + r.findings.length, 0);
+
+  if (asJson) {
+    console.log(JSON.stringify(toJson(results), null, 2));
+    return total > 0 ? 1 : 0;
+  }
+
+  for (const { file, findings } of results) {
     if (findings.length === 0) {
       console.log(`✓ ${file} — 参照整合OK`);
       continue;
     }
-    total += findings.length;
     console.error(`✗ ${file} — ${findings.length} 件`);
     for (const f of findings) {
       console.error(`  ${file}:${f.ln}\t${f.msg}`);
