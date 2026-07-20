@@ -63,3 +63,26 @@ test('タイトル付きリンク・アンカー付き相対パスも正しく�
   const f = scan('[x](docs/a.md "タイトル") と [y](docs/a.md#sec)', { exists: (p) => p === 'docs/a.md' });
   assert.equal(f.length, 0);
 });
+
+// --- fenced code block 内のパス抽出（opt-in: codeBlocks）---
+
+const fenced = ['```bash', 'node src/index.js', 'python scripts/gen.py', '```'].join('\n');
+
+test('codeBlocks 無効なら コードブロック内の裸パスは見ない（既定・誤検出ゼロ）', () => {
+  const f = scan(fenced, { exists: () => false });
+  assert.equal(f.length, 0);
+});
+
+test('codeBlocks 有効なら コードブロック内の存在しないパスを検出', () => {
+  const f = scan(fenced, { exists: (p) => p === 'src/index.js', codeBlocks: true });
+  assert.equal(f.length, 1);
+  assert.equal(f[0].kind, 'code-path');
+  assert.match(f[0].msg, /scripts\/gen\.py/);
+});
+
+test('codeBlocks: フェンスマーカ行・npm/flag・拡張子なしは誤検出しない', () => {
+  const body = ['```sh', 'npm install', 'npm run build', 'cd output/dir', 'node app.js --port 3000', '```'].join('\n');
+  // build は script 未登録なら 1 件（既存の script 検査）。パスは app.js のみ検査対象。
+  const f = scan(body, { scripts: new Set(['build']), exists: (p) => p === 'app.js', codeBlocks: true });
+  assert.equal(f.length, 0);
+});

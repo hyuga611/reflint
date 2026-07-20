@@ -44,10 +44,17 @@ export function looksLikePath(t) {
  * @param scripts  package.json の scripts 名の Set（null ならスクリプト検証をスキップ）
  * @param exists  パスの実在判定 `(relPath) => boolean`
  */
-export function scan(text, { scripts = null, exists = () => true } = {}) {
+export function scan(text, { scripts = null, exists = () => true, codeBlocks = false } = {}) {
   const findings = [];
+  let inFence = false;
   text.split(/\r?\n/).forEach((line, i) => {
     const ln = i + 1;
+
+    // フェンス（``` / ~~~）の開閉。マーカ行自体は走査しない。
+    if (/^\s*(`{3,}|~{3,})/.test(line)) {
+      inFence = !inFence;
+      return;
+    }
 
     // 1) `npm run <script>` などが package.json に存在するか
     for (const m of line.matchAll(/\b(?:npm run|pnpm run|yarn run|bun run|pnpm|yarn)\s+([\w:.-]+)/g)) {
@@ -83,6 +90,21 @@ export function scan(text, { scripts = null, exists = () => true } = {}) {
         findings.push({ ln, kind: 'link', msg: `リンク先 \`${target}\` が存在しません` });
       }
     }
+
+    // 4) （opt-in）コードブロック内の裸のパス参照が実在するか。
+    //    誤検出ゼロ優先で「拡張子付きのリポ相対パス」だけに限定。--code-blocks で有効化。
+    if (codeBlocks && inFence) {
+      for (const raw of line.split(/\s+/)) {
+        const t = raw.replace(/^[('"`]+/, '').replace(/[)'"`,;:]+$/, '');
+        if (!t || t.startsWith('#') || t.startsWith('/')) continue;
+        if (/^[a-z][\w+.-]*:/i.test(t)) continue; // scheme (http: など)
+        if (!looksLikePath(t) || !CODE_EXT.test(t)) continue; // 拡張子付きのみ
+        const rel = t.replace(/^\.\//, '');
+        if (!exists(rel)) {
+          findings.push({ ln, kind: 'code-path', msg: `コードブロック内の参照 \`${t}\` が存在しません` });
+        }
+      }
+    }
   });
   return findings;
 }
@@ -99,7 +121,8 @@ function loadScripts(root) {
 export function main(argv) {
   const inActions = process.env.GITHUB_ACTIONS === 'true';
   const root = process.cwd();
-  const args = argv.filter((a) => a !== '--');
+  const codeBlocks = argv.includes('--code-blocks') || process.env.REFLINT_CODE_BLOCKS === '1';
+  const args = argv.filter((a) => a !== '--' && a !== '--code-blocks');
   const files = args.length ? args : DEFAULT_FILES.filter((f) => existsSync(join(root, f)));
 
   if (files.length === 0) {
@@ -119,7 +142,7 @@ export function main(argv) {
       console.error(`reflint: ${file} を読めません`);
       return 2;
     }
-    const findings = scan(text, { scripts, exists });
+    const findings = scan(text, { scripts, exists, codeBlocks });
     if (findings.length === 0) {
       console.log(`✓ ${file} — 参照整合OK`);
       continue;
