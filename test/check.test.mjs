@@ -141,3 +141,15 @@ test('toJson: results を機械可読な形へ', () => {
 test('toJson: 空なら ok:true', () => {
   assert.deepEqual(toJson([{ file: 'a', findings: [] }]), { ok: true, count: 0, findings: [] });
 });
+
+test('Windows絶対パス・NASパスは対象外（性能＆誤検出防止）', () => {
+  assert.equal(looksLikePath(String.raw`X:\01\a.md`), false);
+  assert.equal(looksLikePath('C:/Users/x/a.md'), false);
+  assert.equal(looksLikePath('src/a.md'), true);
+});
+
+test('絶対パス/スラッシュコマンド・プレースホルダは対象外', () => {
+  assert.equal(looksLikePath('/newpage'), false);
+  assert.equal(looksLikePath('foo_<slug>.md'), false);
+  assert.equal(looksLikePath('src/a.md'), true);
+});

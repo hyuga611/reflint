@@ -33,6 +33,10 @@ export function lev(a, b) {
 export function looksLikePath(t) {
   if (!t || /\s/.test(t)) return false;
   if (/^[a-z][\w+.-]*:\/\//i.test(t)) return false; // URL
+  if (t.includes('\\')) return false;               // Windows パス（バックスラッシュ）は対象外
+  if (/^[a-zA-Z]:/.test(t)) return false;           // ドライブレター絶対パス (C:\ X:\ 等・NASを叩かない)
+  if (t.startsWith('/')) return false;              // 絶対パス / スラッシュコマンド (/newpage 等) は対象外
+  if (t.includes('<') || t.includes('>')) return false; // テンプレプレースホルダ (foo_<slug>.md 等)
   if (t.includes('*')) return false;                // glob はスキップ
   if (t.startsWith('#') || t.startsWith('@')) return false;
   return (t.includes('/') && !t.endsWith('/')) || CODE_EXT.test(t);
