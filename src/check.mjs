@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// agents-lint — reference-integrity checker for AGENTS.md / llms.txt / CLAUDE.md.
+// reflint — reference-integrity checker for AGENTS.md / llms.txt / CLAUDE.md.
 //
 // 「AI向けの設定ファイルが、もう存在しないコマンド・スクリプト・パスを
 //   指していないか」を検証する。表記や文体ではなく "嘘の指示" を落とす。
@@ -88,7 +88,7 @@ export function main(argv) {
   const files = args.length ? args : DEFAULT_FILES.filter((f) => existsSync(join(root, f)));
 
   if (files.length === 0) {
-    console.log('agents-lint: 対象ファイルなし（AGENTS.md / llms.txt / CLAUDE.md）。スキップ。');
+    console.log('reflint: 対象ファイルなし（AGENTS.md / llms.txt / CLAUDE.md）。スキップ。');
     return 0;
   }
 
@@ -101,7 +101,7 @@ export function main(argv) {
     try {
       text = readFileSync(resolve(root, file), 'utf8');
     } catch {
-      console.error(`agents-lint: ${file} を読めません`);
+      console.error(`reflint: ${file} を読めません`);
       return 2;
     }
     const findings = scan(text, { scripts, exists });
@@ -119,10 +119,10 @@ export function main(argv) {
   }
 
   if (total > 0) {
-    console.error(`\nagents-lint: ${total} 件の参照エラー`);
+    console.error(`\nreflint: ${total} 件の参照エラー`);
     return 1;
   }
-  console.log('agents-lint: すべてOK');
+  console.log('reflint: すべてOK');
   return 0;
 }
 

@@ -1,6 +1,6 @@
-name: 'agents-lint'
-description: 'Fail CI when your AGENTS.md / llms.txt points at commands, scripts, or paths that no longer exist.'
-author: 'agents-lint'
+name: 'reflint'
+description: 'Fail CI when your AGENTS.md / llms.txt / CLAUDE.md points at commands, scripts, or paths that no longer exist. Language-agnostic.'
+author: 'hyuga611'
 branding:
   icon: 'check-circle'
   color: 'green'
@@ -12,7 +12,7 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    - name: Run agents-lint
+    - name: Run reflint
       shell: bash
       # Pass the caller input via env (NOT ${{ }} expanded into the script) to avoid
       # GitHub Actions template/shell injection. $FILES is intentionally unquoted so

@@ -1,10 +1,10 @@
 {
-  "name": "agents-lint",
-  "version": "0.0.0",
-  "description": "Reference-integrity linter for AGENTS.md / llms.txt — catch commands, scripts, and paths that no longer exist. Language-agnostic, runs in CI.",
+  "name": "reflint",
+  "version": "0.1.0",
+  "description": "Reference-integrity linter for AGENTS.md / llms.txt / CLAUDE.md — fail CI when agent config points at commands, scripts, or paths that no longer exist. Language-agnostic, zero-dependency.",
   "type": "module",
   "bin": {
-    "agents-lint": "src/check.mjs"
+    "reflint": "src/check.mjs"
   },
   "scripts": {
     "poc": "node src/check.mjs examples/AGENTS.sample.md",
@@ -13,11 +13,13 @@
   "keywords": [
     "agents.md",
     "llms.txt",
+    "claude.md",
     "ai",
     "agent",
     "linter",
     "ci",
     "reference-integrity",
+    "language-agnostic",
     "mcp"
   ],
   "license": "MIT"

@@ -1,4 +1,4 @@
-name: agents-lint
+name: reflint
 on:
   push:
   pull_request:
@@ -8,7 +8,7 @@ permissions:
   contents: read
 
 jobs:
-  agents-lint:
+  reflint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
