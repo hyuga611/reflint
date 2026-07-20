@@ -68,6 +68,21 @@ export function scan(text, { scripts = null, exists = () => true } = {}) {
         findings.push({ ln, kind: 'path', msg: `参照 \`${t}\` が存在しません` });
       }
     }
+
+    // 3) markdown リンク [text](target) の参照先が実在するか（llms.txt 参照整合の本体）
+    //    llms.txt は本文がリンクの束なので、ここがバッククォート検査では拾えない核心。
+    //    誤検出ゼロ優先で「リポジトリ相対パス」だけに限定する。
+    for (const m of line.matchAll(/\[[^\]]*\]\(([^)]+)\)/g)) {
+      // タイトル付き `(path "title")` はパス部分だけ取り出す
+      let target = m[1].trim().replace(/\s+["'][^"']*["']\s*$/, '').trim();
+      if (!target || target.startsWith('#') || target.startsWith('/')) continue; // 空/アンカー/サイト絶対
+      if (/^[a-z][\w+.-]*:/i.test(target)) continue; // http: https: mailto: tel: data: など
+      if (!looksLikePath(target)) continue;
+      const rel = target.replace(/[#?].*$/, '').replace(/^\.\//, ''); // アンカー/クエリを外して実在判定
+      if (rel && !exists(rel)) {
+        findings.push({ ln, kind: 'link', msg: `リンク先 \`${target}\` が存在しません` });
+      }
+    }
   });
   return findings;
 }

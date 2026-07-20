@@ -37,6 +37,7 @@ npx @hyuga/reflint docs/AGENTS.md llms.txt
 ```
 
 What it catches:
+- **Markdown link targets** (`[text](path)`) in `llms.txt` / `AGENTS.md` that point at repo files which don't exist — the llms.txt referential-integrity check nobody else does in CI
 - Back-quoted paths/files that don't exist on disk — **language-agnostic** (works in any repo)
 - `npm run <script>` / `pnpm <script>` etc. that isn't in `package.json` (suggests the nearest name) — for JS repos
 - Exit code 1 when anything is wrong = a CI gate
@@ -45,7 +46,7 @@ What it catches:
 
 - [x] Reference-integrity core: file paths (any language) + npm scripts (zero-dep) — `src/check.mjs`
 - [x] **GitHub Action** (`action.yml`) + inline PR annotations + self-CI
-- [ ] `llms.txt` link/path referential integrity (the wedge no one else covers in CI)
+- [x] `llms.txt` markdown-link referential integrity — repo-relative link targets must resolve (the wedge no one else covers in CI)
 - [ ] Extract commands / paths inside fenced code blocks (remark AST)
 - [ ] textlint / markdown-link-check エコシステムへの相乗り
 
