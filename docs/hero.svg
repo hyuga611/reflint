@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="290" viewBox="0 0 860 290" role="img" aria-label="Terminal: npx @hyuga/reflint reports 3 broken references in AGENTS.md and exits 1">
+  <title>reflint — fails CI when agent config points at things that no longer exist</title>
+  <defs>
+    <style>
+      .t { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace; font-size: 14.5px; }
+      .dim   { fill: #7d8590; }
+      .fg    { fill: #c9d1d9; }
+      .red   { fill: #ff7b72; }
+      .green { fill: #3fb950; }
+      .cyan  { fill: #79c0ff; }
+      .yel   { fill: #d29922; }
+      .bold  { font-weight: 700; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="860" height="290" rx="10" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <rect x="1" y="1" width="858" height="36" rx="9" fill="#161b22"/>
+  <rect x="1" y="28" width="858" height="9" fill="#161b22"/>
+  <line x1="1" y1="37" x2="859" y2="37" stroke="#30363d" stroke-width="1"/>
+  <circle cx="22" cy="19" r="6" fill="#ff5f57"/>
+  <circle cx="42" cy="19" r="6" fill="#febc2e"/>
+  <circle cx="62" cy="19" r="6" fill="#28c840"/>
+  <text class="t dim" x="430" y="24" text-anchor="middle">reflint — CI</text>
+
+  <text class="t" x="24" y="70"><tspan class="green bold">$</tspan><tspan class="fg" xml:space="preserve"> npx @hyuga/reflint</tspan></text>
+
+  <text class="t" x="24" y="100"><tspan class="red bold">✗</tspan><tspan class="fg" xml:space="preserve"> AGENTS.md </tspan><tspan class="dim">—</tspan><tspan class="red" xml:space="preserve"> 3 broken references</tspan></text>
+
+  <text class="t" x="24" y="128" xml:space="preserve"><tspan class="dim">  AGENTS.md:8</tspan><tspan class="fg" xml:space="preserve">    `npm run build` </tspan><tspan class="dim">—</tspan><tspan class="fg" xml:space="preserve"> no script </tspan><tspan class="yel">"build"</tspan><tspan class="fg" xml:space="preserve"> in package.json </tspan><tspan class="dim">(did you mean "bundle"?)</tspan></text>
+
+  <text class="t" x="24" y="152" xml:space="preserve"><tspan class="dim">  AGENTS.md:14</tspan><tspan class="fg" xml:space="preserve">   reference </tspan><tspan class="cyan">`src/parser.ts`</tspan><tspan class="fg" xml:space="preserve"> does not exist</tspan></text>
+
+  <text class="t" x="24" y="176" xml:space="preserve"><tspan class="dim">  AGENTS.md:15</tspan><tspan class="fg" xml:space="preserve">   reference </tspan><tspan class="cyan">`test/run.mjs`</tspan><tspan class="fg" xml:space="preserve"> does not exist</tspan></text>
+
+  <text class="t red" x="24" y="212">reflint: 3 broken references</text>
+
+  <text class="t" x="24" y="244"><tspan class="green bold">$</tspan><tspan class="fg" xml:space="preserve"> echo $?</tspan></text>
+  <text class="t" x="24" y="268"><tspan class="red bold">1</tspan><tspan class="dim" xml:space="preserve">   ← the PR does not merge</tspan></text>
+</svg>

@@ -1,5 +1,11 @@
 # reflint
 
+![reflint fails CI with 3 broken references in AGENTS.md](docs/hero.svg)
+
+[![npm](https://img.shields.io/npm/v/@hyuga/reflint?color=cb3837&logo=npm)](https://www.npmjs.com/package/@hyuga/reflint)
+[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![zero dependencies](https://img.shields.io/badge/dependencies-0-brightgreen)](package.json)
+
 **In any language, fail the PR when your `AGENTS.md`, `llms.txt`, or `CLAUDE.md` points at a command, script, or path that no longer exists.**
 `reflint` is a *reference-integrity* linter for agent config files. It doesn't grade style or prose — it checks whether the references are **real**: the scripts, paths, and files your config tells an AI agent to use. Zero-dependency, language-agnostic, runs in CI on every PR.
 
@@ -80,5 +86,20 @@ node --test                 # unit tests
 npm run poc                 # サンプル(意図的に不整合)で検出デモ → exit 1
 node src/check.mjs          # このリポジトリ自身の AGENTS.md を検査 → exit 0
 ```
+
+## Related tools
+
+Zero-dependency CI linters for repos where AI agents do the work. Each one fails the PR on something that breaks quietly.
+
+| | Catches |
+| --- | --- |
+| **reflint** ← you are here | `AGENTS.md` / `llms.txt` / `CLAUDE.md` pointing at commands, scripts, or paths that no longer exist |
+| [skills-lint](https://github.com/hyuga611/skills-lint) | `SKILL.md` broken references + `name`/trigger collisions between skills |
+| [carrylint](https://github.com/hyuga611/carrylint) | Skills with the author's machine or model baked in — absolute paths, undeclared CLIs, unresolved placeholders |
+| [genchi](https://github.com/hyuga611/genchi) | Agents reporting "done" without re-fetching real-world state |
+| [tracklint](https://github.com/hyuga611/tracklint) | Forms and CTAs that quietly stopped being wired for conversion tracking |
+| [tokenlint](https://github.com/hyuga611/tokenlint) | Hardcoded colors that bypass your design tokens |
+| [reflint for VS Code](https://github.com/hyuga611/reflint-vscode) | The same reflint checks, inline in the editor as you save |
+| [orogami](https://github.com/hyuga611/orogami) | Not a linter — natural Japanese/CJK line breaking for OGP images (BudouX + font subsetting) |
 
 MIT

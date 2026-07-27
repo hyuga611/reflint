@@ -1,6 +1,6 @@
 {
   "name": "@hyuga/reflint",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Reference-integrity linter for AGENTS.md / llms.txt / CLAUDE.md — fail CI when agent config points at commands, scripts, or paths that no longer exist. Language-agnostic, zero-dependency.",
   "type": "module",
   "main": "src/check.mjs",
@@ -31,5 +31,17 @@
     "language-agnostic",
     "mcp"
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "author": "hyuga611",
+  "homepage": "https://github.com/hyuga611/reflint",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hyuga611/reflint.git"
+  },
+  "bugs": {
+    "url": "https://github.com/hyuga611/reflint/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  }
 }

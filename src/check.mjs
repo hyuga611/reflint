@@ -66,8 +66,8 @@ export function scan(text, { scripts = null, exists = () => true, codeBlocks = f
       if (RESERVED.has(name)) continue;
       if (scripts && !scripts.has(name)) {
         const near = [...scripts].sort((a, b) => lev(a, name) - lev(b, name))[0];
-        const hint = near && lev(near, name) <= 2 ? `（"${near}" では？）` : '';
-        findings.push({ ln, kind: 'script', msg: `\`${m[0]}\` — package.json に script "${name}" がありません${hint}` });
+        const hint = near && lev(near, name) <= 2 ? ` (did you mean "${near}"?)` : '';
+        findings.push({ ln, kind: 'script', msg: `\`${m[0]}\` — no script "${name}" in package.json${hint}` });
       }
     }
 
@@ -76,7 +76,7 @@ export function scan(text, { scripts = null, exists = () => true, codeBlocks = f
       const t = m[1].trim();
       if (!looksLikePath(t)) continue;
       if (!exists(t.replace(/^\.\//, ''))) {
-        findings.push({ ln, kind: 'path', msg: `参照 \`${t}\` が存在しません` });
+        findings.push({ ln, kind: 'path', msg: `reference \`${t}\` does not exist` });
       }
     }
 
@@ -91,7 +91,7 @@ export function scan(text, { scripts = null, exists = () => true, codeBlocks = f
       if (!looksLikePath(target)) continue;
       const rel = target.replace(/[#?].*$/, '').replace(/^\.\//, ''); // アンカー/クエリを外して実在判定
       if (rel && !exists(rel)) {
-        findings.push({ ln, kind: 'link', msg: `リンク先 \`${target}\` が存在しません` });
+        findings.push({ ln, kind: 'link', msg: `link target \`${target}\` does not exist` });
       }
     }
 
@@ -105,7 +105,7 @@ export function scan(text, { scripts = null, exists = () => true, codeBlocks = f
         if (!looksLikePath(t) || !CODE_EXT.test(t)) continue; // 拡張子付きのみ
         const rel = t.replace(/^\.\//, '');
         if (!exists(rel)) {
-          findings.push({ ln, kind: 'code-path', msg: `コードブロック内の参照 \`${t}\` が存在しません` });
+          findings.push({ ln, kind: 'code-path', msg: `reference \`${t}\` in code block does not exist` });
         }
       }
     }
@@ -168,7 +168,7 @@ export function main(argv) {
 
   if (files.length === 0) {
     if (asJson) console.log(JSON.stringify({ ok: true, count: 0, findings: [] }, null, 2));
-    else console.log('reflint: 対象ファイルなし（AGENTS.md / llms.txt / CLAUDE.md）。スキップ。');
+    else console.log('reflint: no target file found (AGENTS.md / llms.txt / CLAUDE.md) — skipping.');
     return 0;
   }
 
@@ -180,7 +180,7 @@ export function main(argv) {
       text = readFileSync(abs, 'utf8');
     } catch {
       if (asJson) console.log(JSON.stringify({ ok: false, error: `cannot read ${file}` }, null, 2));
-      else console.error(`reflint: ${file} を読めません`);
+      else console.error(`reflint: cannot read ${file}`);
       return 2;
     }
     // monorepo: scripts は最も近い package.json、パス実在はファイル位置 or リポ root で解決。
@@ -199,10 +199,10 @@ export function main(argv) {
 
   for (const { file, findings } of results) {
     if (findings.length === 0) {
-      console.log(`✓ ${file} — 参照整合OK`);
+      console.log(`✓ ${file} — all references resolve`);
       continue;
     }
-    console.error(`✗ ${file} — ${findings.length} 件`);
+    console.error(`✗ ${file} — ${findings.length} broken reference${findings.length === 1 ? '' : 's'}`);
     for (const f of findings) {
       console.error(`  ${file}:${f.ln}\t${f.msg}`);
       // GitHub Actions ではPRにインライン注釈を出す
@@ -211,10 +211,10 @@ export function main(argv) {
   }
 
   if (total > 0) {
-    console.error(`\nreflint: ${total} 件の参照エラー`);
+    console.error(`\nreflint: ${total} broken reference${total === 1 ? '' : 's'}`);
     return 1;
   }
-  console.log('reflint: すべてOK');
+  console.log('reflint: all references resolve');
   return 0;
 }
 
