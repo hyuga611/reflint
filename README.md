@@ -41,6 +41,7 @@ npx @hyuga/reflint            # AGENTS.md / llms.txt / CLAUDE.md を自動検出
 npx @hyuga/reflint docs/AGENTS.md llms.txt
 npx @hyuga/reflint --code-blocks   # ```コードブロック``` 内の拡張子付きパスも検査（opt-in）
 npx @hyuga/reflint --format json   # 機械可読な JSON 出力（エディタ拡張・他ツール連携の下地）
+npx @hyuga/reflint --ignore llms-full.txt,docs/legacy.md   # 個別に無視（カンマ区切り・REFLINT_IGNORE でも可）
 # npm i -g @hyuga/reflint すると `reflint` コマンドで使えます
 # monorepo では、対象ファイルに最も近い package.json の scripts を自動で参照します
 ```
@@ -50,6 +51,11 @@ What it catches:
 - Back-quoted paths/files that don't exist on disk — **language-agnostic** (works in any repo)
 - `npm run <script>` / `pnpm <script>` etc. that isn't in `package.json` (suggests the nearest name) — for JS repos
 - Exit code 1 when anything is wrong = a CI gate
+
+What it deliberately **doesn't** flag — a linter is abandoned after one false positive, so precision wins over recall:
+- Bare format names in prose (`AGENTS.md`, `llms.txt`, `CLAUDE.md`, `SKILL.md`, `README.md`, `.cursorrules`…). Writing *about* the format isn't a reference. Qualify it with a directory (`docs/llms.txt`) and it's checked again
+- Absolute paths, drive letters, globs, `<placeholders>`, URLs, and slash-commands
+- Anything you pass to `--ignore`
 
 ## textlint と併用 / textlint rule (experimental)
 
@@ -78,6 +84,7 @@ await kernel.lintText(text, {
 - [x] Paths inside fenced code blocks — opt-in `--code-blocks` (extension-bearing, repo-relative paths only, to stay false-positive-free)
 - [x] textlint rule adapter (`@hyuga/reflint/textlint-rule`, experimental) — reuse reflint inside an existing textlint pass
 - [x] `--format json` machine-readable output + monorepo resolution (nearest `package.json`, path found from the file's dir or repo root)
+- [x] Precision pass — prose mentions of format names no longer flagged, plus `--ignore` / `REFLINT_IGNORE` as an escape hatch
 
 ## Dev
 

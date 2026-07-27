@@ -19,6 +19,20 @@ export const RESERVED = new Set([
 export const CODE_EXT = /\.(m?[jt]sx?|json|ya?ml|toml|md|txt|sh|py|rb|go|rs|php|html?|css|lock|env|cfg|ini|xml|svg)$/i;
 const DEFAULT_FILES = ['AGENTS.md', 'llms.txt', 'CLAUDE.md'];
 
+// 散文で「フォーマット名」として言及されるだけの裸のファイル名は、実在しなくても
+// 参照エラーではない（例: "your `AGENTS.md`, `llms.txt`, or `CLAUDE.md`"）。
+// ディレクトリ区切りを含む書き方（`docs/llms.txt`）は明示的な参照なので対象のまま。
+// リンタは誤検出ひとつで捨てられるので、ここは検出漏れより精度を優先する。
+export const FORMAT_NAMES = new Set([
+  'AGENTS.md', 'CLAUDE.md', 'GEMINI.md', 'SKILL.md', 'README.md',
+  'llms.txt', 'llms-full.txt', '.cursorrules', '.windsurfrules',
+]);
+
+/** 裸のファイル名（ディレクトリを含まない）か。 */
+function isBareName(t) {
+  return !t.includes('/');
+}
+
 export function lev(a, b) {
   const m = a.length, n = b.length;
   const d = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
@@ -47,8 +61,11 @@ export function looksLikePath(t) {
  * @param text  ファイル本文
  * @param scripts  package.json の scripts 名の Set（null ならスクリプト検証をスキップ）
  * @param exists  パスの実在判定 `(relPath) => boolean`
+ * @param ignore  追加で無視する参照名の Set（--ignore / reflint.ignore）
  */
-export function scan(text, { scripts = null, exists = () => true, codeBlocks = false } = {}) {
+export function scan(text, { scripts = null, exists = () => true, codeBlocks = false, ignore = new Set() } = {}) {
+  // 散文中のフォーマット名（裸のファイル名のみ）と、ユーザー指定の無視リスト。
+  const skipProse = (t) => ignore.has(t) || (isBareName(t) && FORMAT_NAMES.has(t));
   const findings = [];
   let inFence = false;
   text.split(/\r?\n/).forEach((line, i) => {
@@ -74,7 +91,7 @@ export function scan(text, { scripts = null, exists = () => true, codeBlocks = f
     // 2) バッククォートで書かれた参照パスが実在するか
     for (const m of line.matchAll(/`([^`]+)`/g)) {
       const t = m[1].trim();
-      if (!looksLikePath(t)) continue;
+      if (!looksLikePath(t) || skipProse(t)) continue;
       if (!exists(t.replace(/^\.\//, ''))) {
         findings.push({ ln, kind: 'path', msg: `reference \`${t}\` does not exist` });
       }
@@ -88,7 +105,7 @@ export function scan(text, { scripts = null, exists = () => true, codeBlocks = f
       let target = m[1].trim().replace(/\s+["'][^"']*["']\s*$/, '').trim();
       if (!target || target.startsWith('#') || target.startsWith('/')) continue; // 空/アンカー/サイト絶対
       if (/^[a-z][\w+.-]*:/i.test(target)) continue; // http: https: mailto: tel: data: など
-      if (!looksLikePath(target)) continue;
+      if (!looksLikePath(target) || ignore.has(target)) continue;
       const rel = target.replace(/[#?].*$/, '').replace(/^\.\//, ''); // アンカー/クエリを外して実在判定
       if (rel && !exists(rel)) {
         findings.push({ ln, kind: 'link', msg: `link target \`${target}\` does not exist` });
@@ -103,6 +120,7 @@ export function scan(text, { scripts = null, exists = () => true, codeBlocks = f
         if (!t || t.startsWith('#') || t.startsWith('/')) continue;
         if (/^[a-z][\w+.-]*:/i.test(t)) continue; // scheme (http: など)
         if (!looksLikePath(t) || !CODE_EXT.test(t)) continue; // 拡張子付きのみ
+        if (skipProse(t)) continue;
         const rel = t.replace(/^\.\//, '');
         if (!exists(rel)) {
           findings.push({ ln, kind: 'code-path', msg: `reference \`${t}\` in code block does not exist` });
@@ -149,10 +167,22 @@ export function main(argv) {
   const root = process.cwd();
   let codeBlocks = argv.includes('--code-blocks') || process.env.REFLINT_CODE_BLOCKS === '1';
   let asJson = argv.includes('--json') || process.env.REFLINT_FORMAT === 'json';
+  const ignore = new Set(
+    (process.env.REFLINT_IGNORE || '').split(',').map((s) => s.trim()).filter(Boolean),
+  );
   const files0 = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--' || a === '--code-blocks' || a === '--json') continue;
+    if (a === '--ignore') {
+      for (const n of (argv[i + 1] || '').split(',')) if (n.trim()) ignore.add(n.trim());
+      i++;
+      continue;
+    }
+    if (a.startsWith('--ignore=')) {
+      for (const n of a.slice(9).split(',')) if (n.trim()) ignore.add(n.trim());
+      continue;
+    }
     if (a === '--format') {
       if (argv[i + 1] === 'json') asJson = true;
       i++;
@@ -187,7 +217,7 @@ export function main(argv) {
     const fileDir = dirname(abs);
     const scripts = nearestScripts(fileDir, root);
     const exists = (p) => existsSync(resolve(fileDir, p)) || existsSync(resolve(root, p));
-    results.push({ file, findings: scan(text, { scripts, exists, codeBlocks }) });
+    results.push({ file, findings: scan(text, { scripts, exists, codeBlocks, ignore }) });
   }
 
   const total = results.reduce((n, r) => n + r.findings.length, 0);

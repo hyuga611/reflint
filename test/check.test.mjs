@@ -153,3 +153,27 @@ test('絶対パス/スラッシュコマンド・プレースホルダは対象�
   assert.equal(looksLikePath('foo_<slug>.md'), false);
   assert.equal(looksLikePath('src/a.md'), true);
 });
+
+test('散文中のフォーマット名（裸のファイル名）は誤検出しない', () => {
+  const text = 'fail the PR when your `AGENTS.md`, `llms.txt`, or `CLAUDE.md` points at a dead path';
+  assert.deepEqual(scan(text, { exists: () => false }), []);
+});
+
+test('ディレクトリ付きなら同じ名前でも参照として検査する', () => {
+  const f = scan('see `docs/llms.txt`', { exists: () => false });
+  assert.equal(f.length, 1);
+  assert.match(f[0].msg, /docs\/llms\.txt/);
+});
+
+test('--ignore で指定した参照は無視される', () => {
+  const text = 'see `nope.md`';
+  assert.equal(scan(text, { exists: () => false }).length, 1);
+  assert.equal(scan(text, { exists: () => false, ignore: new Set(['nope.md']) }).length, 0);
+});
+
+test('コードブロック内でもフォーマット名は誤検出しない', () => {
+  const text = '```\nAGENTS.md llms.txt src/gone.ts\n```';
+  const f = scan(text, { exists: () => false, codeBlocks: true });
+  assert.equal(f.length, 1);
+  assert.match(f[0].msg, /src\/gone\.ts/);
+});
