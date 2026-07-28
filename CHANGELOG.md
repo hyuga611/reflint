@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.1
+
+- `--format json` now actually emits the `ref` field 0.8.0 said it did (`null` when a finding has
+  none). Caught by running the published package against a fixture repository rather than the
+  working copy.
+
 ## 0.8.0
 
 **Adoptable on a repository that already has stale references.**

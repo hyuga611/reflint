@@ -127,7 +127,7 @@ test('textlint rule: Document で findings を report する（mock context）',
 
 test('toJson: results を機械可読な形へ', () => {
   const r = [
-    { file: 'AGENTS.md', findings: [{ ln: 3, kind: 'path', msg: 'x' }] },
+    { file: 'AGENTS.md', findings: [{ ln: 3, kind: 'path', ref: 'src/a.ts', msg: 'x' }] },
     { file: 'llms.txt', findings: [] },
   ];
   const j = toJson(r);
@@ -136,6 +136,13 @@ test('toJson: results を機械可読な形へ', () => {
   assert.equal(j.findings[0].file, 'AGENTS.md');
   assert.equal(j.findings[0].line, 3);
   assert.equal(j.findings[0].message, 'x');
+  // ref は差分ゲートと同じキー。エディタ拡張側で指摘を突き合わせるのに使う。
+  assert.equal(j.findings[0].ref, 'src/a.ts');
+});
+
+test('toJson: ref が無い指摘でもキーは落とさない（null で出す）', () => {
+  const j = toJson([{ file: 'a', findings: [{ ln: 1, kind: 'path', msg: 'x' }] }]);
+  assert.equal(j.findings[0].ref, null);
 });
 
 test('toJson: 空なら ok:true', () => {
