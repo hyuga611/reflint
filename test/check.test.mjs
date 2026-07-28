@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { scan, looksLikePath, toJson } from '../src/check.mjs';
+import { scan, looksLikePath, toJson, diffFindings } from '../src/check.mjs';
 import reflintRule, { toTextlintErrors, lineStartIndex } from '../src/textlint-rule.mjs';
 
 test('存在しない npm script を検出', () => {
@@ -225,4 +225,47 @@ test('本物の壊れた参照は従来どおり検出する', () => {
   const f = scan('詳細は `CONTRIBUTING.md` と `src/parser.ts` を参照', nothing);
   assert.equal(f.length, 2);
   assert.equal(f[0].kind, 'path');
+});
+
+// --- 差分ゲート（--since）: 既存の債務では落とさず、新しく壊した分だけ落とす ---
+
+test('diffFindings: 既に壊れていた参照は新規に数えない', () => {
+  const base = [{ file: 'AGENTS.md', kind: 'path', ref: 'docs/old.md', ln: 2 }];
+  const head = [
+    { file: 'AGENTS.md', kind: 'path', ref: 'docs/old.md', ln: 9 }, // 行が動いただけ
+    { file: 'AGENTS.md', kind: 'path', ref: 'docs/new.md', ln: 12 },
+  ];
+  const d = diffFindings(base, head);
+  assert.equal(d.fresh.length, 1);
+  assert.equal(d.fresh[0].ref, 'docs/new.md');
+  assert.equal(d.preexisting, 1);
+});
+
+test('diffFindings: 同じ参照でも別ファイルなら別物として扱う', () => {
+  const base = [{ file: 'AGENTS.md', kind: 'path', ref: 'docs/x.md' }];
+  const head = [{ file: 'CLAUDE.md', kind: 'path', ref: 'docs/x.md' }];
+  assert.equal(diffFindings(base, head).fresh.length, 1);
+});
+
+test('diffFindings: 種類が違えば別物（同名のスクリプトとパス）', () => {
+  const base = [{ file: 'AGENTS.md', kind: 'script', ref: 'build' }];
+  const head = [
+    { file: 'AGENTS.md', kind: 'script', ref: 'build' },
+    { file: 'AGENTS.md', kind: 'path', ref: 'build' },
+  ];
+  const d = diffFindings(base, head);
+  assert.equal(d.fresh.length, 1);
+  assert.equal(d.fresh[0].kind, 'path');
+});
+
+test('diffFindings: ベース側に何も無ければ全部が新規（このPRで追加された文書）', () => {
+  const head = [{ file: 'AGENTS.md', kind: 'path', ref: 'a.md' }, { file: 'AGENTS.md', kind: 'link', ref: 'b.md' }];
+  const d = diffFindings([], head);
+  assert.equal(d.fresh.length, 2);
+  assert.equal(d.preexisting, 0);
+});
+
+test('scan: 指摘に安定した参照キー(ref)が付く', () => {
+  const f = scan('見よ `docs/gone.md` と `npm run nope`', { scripts: new Set(['build']), exists: () => false });
+  assert.deepEqual(f.map((x) => [x.kind, x.ref]).sort(), [['path', 'docs/gone.md'], ['script', 'nope']]);
 });

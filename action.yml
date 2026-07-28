@@ -9,6 +9,15 @@ inputs:
     description: 'Space-separated files to check. Default: auto-detect AGENTS.md / llms.txt / CLAUDE.md at the repo root.'
     required: false
     default: ''
+  since:
+    description: >-
+      Only fail on references this PR newly broke, diffed against this git ref.
+      Pre-existing broken references are reported as a count but do not fail the run,
+      so you can adopt reflint on an existing repository without fixing everything first.
+      Defaults to the PR base on pull_request. Set to "off" to always check every reference.
+      Requires history: use actions/checkout with fetch-depth: 0.
+    required: false
+    default: ''
 runs:
   using: 'composite'
   steps:
@@ -19,4 +28,10 @@ runs:
       # multiple space-separated filenames split into separate argv.
       env:
         FILES: ${{ inputs.files }}
-      run: node "$GITHUB_ACTION_PATH/src/check.mjs" $FILES
+        SINCE: ${{ inputs.since }}
+      # --since の既定（pull_request なら PR のベース）は CLI 側が決める。
+      # ここで二重に決めない。"off" を渡したときだけ全件検査に戻す。
+      run: |
+        args=()
+        if [ -n "$SINCE" ]; then args+=(--since "$SINCE"); fi
+        node "$GITHUB_ACTION_PATH/src/check.mjs" $FILES "${args[@]}"

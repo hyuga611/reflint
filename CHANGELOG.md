@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.8.0
+
+**Adoptable on a repository that already has stale references.**
+
+The 2026-07 audit left reflint reporting something in 40% of real-world documents. About 80% of
+those are genuine — a document really does point at a file that isn't there — but they are *old*
+breakage, and a linter whose first run turns the PR red gets removed before it ever catches
+anything. So the gate moved from "everything must resolve" to "don't break anything new".
+
+- **`--since <ref>` diff gate.** Only references broken by the current change fail the run;
+  pre-existing ones are reported as a count and named in the summary line. On `pull_request` this
+  defaults to the PR base, so the Action needs no configuration — `since: off` restores the old
+  always-check-everything behaviour, and `REFLINT_SINCE` works too.
+- **The comparison is made against the base commit's tree**, not the working tree, so it catches
+  both directions: a document edited to point at something absent, *and* a file deleted while a
+  document still points at it. Same for `npm run` scripts, which are diffed against the base
+  `package.json`.
+- Findings now carry a stable `ref` (the referenced path or script name), so moving a line is not
+  read as new breakage. It is also present in `--format json` output.
+- New `src/git.mjs` — zero-dependency, shells out to git. No git, or an unresolvable ref, degrades
+  to checking every reference and says so rather than silently passing.
+
 ## 0.7.0
 
 Precision hardening, driven by a real-world audit of **139 public `AGENTS.md` / `CLAUDE.md` /

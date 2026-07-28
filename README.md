@@ -29,10 +29,31 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }      # needed for the "new in this PR" diff
       - uses: hyuga611/reflint@v1     # auto-detects AGENTS.md / llms.txt / CLAUDE.md
 ```
 
 Findings show up as inline PR annotations, and the job fails (exit 1) so a stale config can't be merged.
+
+### Adopting it on an existing repository / 既存リポジトリに後から入れる
+
+A document that has been edited for a year usually has some stale references already. If the first
+run turns the PR red, the linter gets removed — so on `pull_request` reflint fails only on
+references **this PR broke**, and reports the rest as a count:
+
+```
+reflint: 1 new since origin/main broken reference (12 pre-existing, not failing this run — run without --since to see them)
+```
+
+"Broke" is judged against the base commit's tree, so it catches both editing a document to point at
+something that isn't there **and** deleting a file that a document still points at.
+
+```yaml
+      - uses: hyuga611/reflint@v1
+        with:
+          since: ''      # default: the PR base on pull_request
+          # since: off   # check every reference, every time (the old behaviour)
+```
 
 ## Use as a CLI / ローカルで使う
 
@@ -42,6 +63,7 @@ npx @hyuga/reflint docs/AGENTS.md llms.txt
 npx @hyuga/reflint --code-blocks   # ```コードブロック``` 内の拡張子付きパスも検査（opt-in）
 npx @hyuga/reflint --format json   # 機械可読な JSON 出力（エディタ拡張・他ツール連携の下地）
 npx @hyuga/reflint --ignore llms-full.txt,docs/legacy.md   # 個別に無視（カンマ区切り・REFLINT_IGNORE でも可）
+npx @hyuga/reflint --since origin/main   # このPRで新しく壊れた参照だけで落とす（既存の債務は件数だけ報告・REFLINT_SINCE でも可）
 # npm i -g @hyuga/reflint すると `reflint` コマンドで使えます
 # monorepo では、対象ファイルに最も近い package.json の scripts を自動で参照します
 ```
