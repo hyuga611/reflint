@@ -7,7 +7,7 @@
 //
 //   node src/check.mjs [file ...]     # 省略時は AGENTS.md / llms.txt / CLAUDE.md を自動検出
 
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { resolve, join, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -44,6 +44,96 @@ export function lev(a, b) {
   return d[m][n];
 }
 
+// リポジトリ全体のパス索引（1回だけ作って使い回す）。
+// 実データ監査（公開リポジトリ 139文書・2026-07）で、「存在しない」と報告した参照の 47% が
+// 実際にはリポジトリ内に実在していた。`interactive_mode_test.go` と書かれたファイルが
+// `internal/cli/interactive_mode_test.go` にある、という類い。人もエージェントも辿れるので落とさない。
+const SKIP_DIRS = new Set(['.git', 'node_modules', 'dist', 'build', 'out', 'target', 'vendor', '.next', '.venv', 'coverage']);
+const repoIndexCache = new Map();
+
+function buildRepoIndex(root) {
+  const byBase = new Map(); // 基本名 → そのパス群
+  const all = [];
+  const walk = (dir, rel, depth) => {
+    if (depth > 12 || all.length > 60000) return;
+    let entries;
+    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      if (e.name.startsWith('.') && e.name !== '.github') continue;
+      if (SKIP_DIRS.has(e.name)) continue;
+      const p = rel ? `${rel}/${e.name}` : e.name;
+      all.push(p);
+      if (!byBase.has(e.name)) byBase.set(e.name, []);
+      byBase.get(e.name).push(p);
+      if (e.isDirectory()) walk(join(dir, e.name), p, depth + 1);
+    }
+  };
+  walk(root, '', 0);
+  return { byBase, all };
+}
+
+/**
+ * .gitignore で意図的に無視されている参照か。
+ * 実データ監査（2026-07）で、「存在しない」と報告した参照には、生成物・実行時設定・
+ * gitignore 済みファイルが多く混ざっていた（`a365.generated.config.json` は本文に
+ * "gitignored" と書いてあった）。git が無視すると宣言しているものを CI で落とすのは筋が悪い。
+ * 完全な gitignore 実装ではなく、素のパターン（名前・`*.ext`・`dir/`・先頭 `/`）だけを見る。
+ */
+const gitignoreCache = new Map();
+
+function loadGitignore(root) {
+  if (gitignoreCache.has(root)) return gitignoreCache.get(root);
+  let rules = [];
+  try {
+    rules = readFileSync(join(root, '.gitignore'), 'utf8')
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter((l) => l && !l.startsWith('#') && !l.startsWith('!'));
+  } catch {
+    rules = [];
+  }
+  gitignoreCache.set(root, rules);
+  return rules;
+}
+
+function isGitIgnored(root, p) {
+  const clean = p.replace(/^\.\//, '').replace(/\/+$/, '');
+  const base = clean.split('/').pop();
+  for (const rule of loadGitignore(root)) {
+    const r = rule.replace(/^\//, '').replace(/\/$/, '');
+    if (!r) continue;
+    if (r === clean || r === base) return true;
+    if (clean === r || clean.startsWith(r + '/')) return true;
+    if (r.startsWith('*.') && base.endsWith(r.slice(1))) return true;
+    if (r.endsWith('*') && base.startsWith(r.slice(0, -1))) return true;
+  }
+  return false;
+}
+
+function existsInRepo(root, p) {
+  const clean = p.replace(/^\.\//, '').replace(/\/+$/, '');
+  if (!clean) return false;
+  if (!repoIndexCache.has(root)) repoIndexCache.set(root, buildRepoIndex(root));
+  const { byBase, all } = repoIndexCache.get(root);
+  if (!clean.includes('/')) return byBase.has(clean);
+  const suffix = `/${clean}`;
+  return all.some((x) => x.endsWith(suffix));
+}
+
+/**
+ * 「これはこのリポジトリのパスとして書かれている」と言えるかを、リポジトリ側の事実で決める。
+ * 実データ監査（公開リポジトリ 139文書・2026-07）で、拡張子の無い参照の多くはパスではなかった:
+ * リポジトリ名（`arnica/depsguard`）、外部リポジトリ（`aosp-mirror/platform_frameworks_base`）、
+ * 語の並列（`async/await`）、名前空間（`sdkerrors/errorsmod`）。
+ * 拡張子が無いものは、先頭のディレクトリがこのリポジトリに実在するときだけパスとして扱う。
+ */
+export function isRepoPath(t, exists) {
+  if (/\.[A-Za-z0-9]{1,8}$/.test(t)) return true; // 拡張子付きはパスとして書かれている
+  const head = t.split('/')[0];
+  if (!head || head === t) return false;          // ディレクトリを含まない拡張子なし → パスと断定しない
+  return exists(head);
+}
+
 export function looksLikePath(t) {
   if (!t || /\s/.test(t)) return false;
   if (/^[a-z][\w+.-]*:\/\//i.test(t)) return false; // URL
@@ -51,8 +141,20 @@ export function looksLikePath(t) {
   if (/^[a-zA-Z]:/.test(t)) return false;           // ドライブレター絶対パス (C:\ X:\ 等・NASを叩かない)
   if (t.startsWith('/')) return false;              // 絶対パス / スラッシュコマンド (/newpage 等) は対象外
   if (t.includes('<') || t.includes('>')) return false; // テンプレプレースホルダ (foo_<slug>.md 等)
+  if (t.includes('{') || t.includes('}')) return false; // 同上 ({type}.md, {{var}}/path 等)
+  if (t.includes('(') || t.includes(')')) return false; // 擬似コード (provider/normalize(model_id) 等)
+  if (t.includes('"') || t.includes("'")) return false; // 文字列リテラル/Cのinclude ("r_util/r_assert.h" 等)
   if (t.includes('*')) return false;                // glob はスキップ
+  if (t.includes('...')) return false;              // 省略記法 (./... , spec/requests/api/... 等)
+  if (/^\.[A-Za-z0-9]+$/.test(t)) return false;     // 拡張子そのもの（散文中の「.ts と .js」等）
+  // ビルド生成物は「まだ無い」のが正常。作る前のリポジトリで CI を落とさない。
+  if (/^(?:\.\/)?(?:dist|build|out|target|coverage|node_modules|\.next|\.output|tmp|temp|\.venv|venv)(?:\/|$)/i.test(t)) return false;
+  if (/^[A-Za-z_$][\w$]*\.(?:env|log|lock|tmp)$/.test(t)) return false; // process.env のような式・実行時生成物
   if (t.startsWith('#') || t.startsWith('@')) return false;
+  if (t.startsWith('-')) return false;              // CLIフラグ / CSS変数の列挙 (--text-primary/secondary 等)
+  // ホスト名で始まるものはパスではない（Goのモジュールパス github.com/x/y、
+  // Kubernetes の API グループ coordination.k8s.io/leases 等）。
+  if (/^[a-z0-9-]+(?:\.[a-z0-9-]+)+\//i.test(t)) return false;
   return (t.includes('/') && !t.endsWith('/')) || CODE_EXT.test(t);
 }
 
@@ -92,7 +194,15 @@ export function scan(text, { scripts = null, exists = () => true, codeBlocks = f
     for (const m of line.matchAll(/`([^`]+)`/g)) {
       const t = m[1].trim();
       if (!looksLikePath(t) || skipProse(t)) continue;
-      if (!exists(t.replace(/^\.\//, ''))) {
+      // `path/to/file.rs::symbol` / `utils/file_utils.py:FileProcessor` / `file.ts#anchor`
+      // はファイル部分だけを見る（記号名まで含めて実在判定しない）。
+      const target = t
+        .replace(/^\.\//, '')
+        .split('::')[0]
+        .replace(/^([^:]*\.[A-Za-z0-9]{1,8}):[A-Za-z_$][\w$]*$/, '$1')
+        .replace(/[#?].*$/, '');
+      if (!target || !isRepoPath(target, exists)) continue;
+      if (!exists(target)) {
         findings.push({ ln, kind: 'path', msg: `reference \`${t}\` does not exist` });
       }
     }
@@ -214,9 +324,14 @@ export function main(argv) {
       return 2;
     }
     // monorepo: scripts は最も近い package.json、パス実在はファイル位置 or リポ root で解決。
+    // それでも見つからないものは、リポジトリ全体から探す（実在するのに書き方が違うだけ、を落とさない）。
     const fileDir = dirname(abs);
     const scripts = nearestScripts(fileDir, root);
-    const exists = (p) => existsSync(resolve(fileDir, p)) || existsSync(resolve(root, p));
+    const exists = (p) =>
+      existsSync(resolve(fileDir, p)) ||
+      existsSync(resolve(root, p)) ||
+      existsInRepo(root, p) ||
+      isGitIgnored(root, p);
     results.push({ file, findings: scan(text, { scripts, exists, codeBlocks, ignore }) });
   }
 

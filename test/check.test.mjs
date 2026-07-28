@@ -177,3 +177,52 @@ test('コードブロック内でもフォーマット名は誤検出しない',
   assert.equal(f.length, 1);
   assert.match(f[0].msg, /src\/gone\.ts/);
 });
+
+// --- 実データ監査（公開リポジトリ 139文書・2026-07）由来の精度修正 ---
+// 「存在しない」と報告した 565件のうち、本物は 2割弱だった。以下はその誤検知の形。
+
+const nothing = { exists: () => false };
+
+test('パスではない文字列を参照扱いしない（実データ由来）', () => {
+  const cases = [
+    '`github.com/nextdns/nextdns`',              // Go のモジュールパス
+    '`coordination.k8s.io/leases`',              // Kubernetes の API グループ
+    '`provider/normalize(model_id)`',            // 擬似コード
+    '`{type}.md`',                               // 命名規約のプレースホルダ
+    '`--text-primary/secondary/tertiary`',       // CSS 変数の列挙
+    '`"r_util/r_assert.h"`',                     // C の include（引用符つき）
+    '`spec/requests/api/...`',                   // 省略記法
+    '`process.env`',                             // JS の式
+    '`.ts`',                                     // 拡張子そのもの
+    '`dist/proton-drive-sync`',                  // ビルド生成物
+    '`.venv/Scripts/python.exe`',                // 仮想環境
+  ];
+  for (const c of cases) assert.deepEqual(scan(c, nothing), [], c);
+});
+
+test('拡張子の無い参照は、先頭ディレクトリが実在するときだけ検査する', () => {
+  // `arnica/depsguard` はリポジトリ名であってパスではない（arnica/ は存在しない）
+  assert.deepEqual(scan('`arnica/depsguard`', { exists: (p) => false }), []);
+  // crates/ が実在するリポジトリなら、crates/stack-cli の欠落は本物の指摘
+  const f = scan('`crates/stack-cli`', { exists: (p) => p === 'crates' });
+  assert.equal(f.length, 1);
+});
+
+test('path::symbol / path:Symbol はファイル部分だけを見る', () => {
+  const has = (p) => p === 'src/budget.rs' || p === 'utils/file_utils.py';
+  assert.deepEqual(scan('`src/budget.rs::find_largest`', { exists: has }), []);
+  assert.deepEqual(scan('`utils/file_utils.py:FileProcessor`', { exists: has }), []);
+  assert.equal(scan('`src/gone.rs::sym`', { exists: has }).length, 1);
+});
+
+test('リポジトリ内に実在すれば、書かれた場所が違っても落とさない', () => {
+  // 文書は `interactive_mode_test.go`、実体は internal/cli/interactive_mode_test.go
+  const exists = (p) => p === 'interactive_mode_test.go'; // CLI 側が全体索引で解決する契約
+  assert.deepEqual(scan('`interactive_mode_test.go`', { exists }), []);
+});
+
+test('本物の壊れた参照は従来どおり検出する', () => {
+  const f = scan('詳細は `CONTRIBUTING.md` と `src/parser.ts` を参照', nothing);
+  assert.equal(f.length, 2);
+  assert.equal(f[0].kind, 'path');
+});
