@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.8.3
+
+- **Stopped reporting home-relative paths as broken references.** A reference beginning with
+  `~` — `~/.claude/settings.json`, `~/.config/app/config.toml` — was resolved against the
+  repository, where it could never exist, so reflint called it broken even when the file was
+  plainly there on the machine. Any config file documenting where a tool keeps its data hit this.
+  Such paths are now left alone: they describe the reader's machine, and reflint has no way to
+  check them. Repository-relative paths are unaffected.
+
+## 0.8.2
+
+- **Exported `nearestScripts`, `existsInRepo` and `isGitIgnored`.** `scan()` was already public, but
+  the resolvers its accuracy depends on were not: an outside caller could not reproduce the
+  `exists` predicate `main()` builds (file dir → repo root → repo-wide index → `.gitignore`), and a
+  naive `existsSync` substitute reports references as missing that reflint itself does not. Callers
+  can now compose the same predicate. No behaviour change to the CLI or its output.
+- **Replaced the two raw NUL bytes in `diffFindings`'s composite key with `\u0000` escapes.** The
+  key still separates its fields with U+0000 — the string the code builds is byte-for-byte what it
+  was — but the source file is now plain text. As literal bytes they made `grep`, `git diff` and
+  every other line-oriented tool treat the file as binary, and any editor or transport that strips
+  control characters would have silently corrupted the delimiter.
+
 ## 0.8.1
 
 - `--format json` now actually emits the `ref` field 0.8.0 said it did (`null` when a finding has

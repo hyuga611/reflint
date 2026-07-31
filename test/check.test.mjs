@@ -28,6 +28,20 @@ test('URL・glob・ただの単語は無視', () => {
   assert.equal(looksLikePath('src/index.ts'), true);
 });
 
+test('ホーム相対のパスは判定しない', () => {
+  // リポジトリ相対として解決すると必ず外れるので、実在するものまで壊れた参照になっていた。
+  assert.equal(looksLikePath('~/.claude/settings.json'), false);
+  assert.equal(looksLikePath('~/.claude/narai/rules.json'), false);
+  assert.equal(looksLikePath('~/.config/app/config.toml'), false);
+  // リポジトリ内のパスは今までどおり判定する。
+  assert.equal(looksLikePath('src/index.ts'), true);
+});
+
+test('ホーム相対を書いても参照エラーにならない', () => {
+  const f = scan('保存先: `~/.claude/narai/rules.json`', { exists: () => false });
+  assert.equal(f.length, 0);
+});
+
 test('整合が取れていれば0件', () => {
   const f = scan('`npm run poc` と `src/check.mjs`', { scripts: new Set(['poc']), exists: () => true });
   assert.equal(f.length, 0);
