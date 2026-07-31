@@ -8,9 +8,6 @@
   plainly there on the machine. Any config file documenting where a tool keeps its data hit this.
   Such paths are now left alone: they describe the reader's machine, and reflint has no way to
   check them. Repository-relative paths are unaffected.
-
-## 0.8.2
-
 - **Exported `nearestScripts`, `existsInRepo` and `isGitIgnored`.** `scan()` was already public, but
   the resolvers its accuracy depends on were not: an outside caller could not reproduce the
   `exists` predicate `main()` builds (file dir → repo root → repo-wide index → `.gitignore`), and a
