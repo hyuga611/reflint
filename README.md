@@ -2,6 +2,8 @@
 
 ![reflint fails CI with 3 broken references in AGENTS.md](docs/hero.svg)
 
+> One of three zero-dependency linters for AI-agent repos. To run all three in a single pass, with one report and one exit code, use **[tenken](https://github.com/hyuga611/tenken)** — `npx @hyuga/tenken`.
+
 [![npm](https://img.shields.io/npm/v/@hyuga/reflint?color=cb3837&logo=npm)](https://www.npmjs.com/package/@hyuga/reflint)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![zero dependencies](https://img.shields.io/badge/dependencies-0-brightgreen)](package.json)
@@ -122,6 +124,7 @@ Zero-dependency CI linters for repos where AI agents do the work. Each one fails
 
 | | Catches |
 | --- | --- |
+| **[tenken](https://github.com/hyuga611/tenken)** — start here | Runs reflint + skills-lint + carrylint over one tree: one report, one exit code, one Action |
 | **reflint** ← you are here | `AGENTS.md` / `llms.txt` / `CLAUDE.md` pointing at commands, scripts, or paths that no longer exist |
 | [skills-lint](https://github.com/hyuga611/skills-lint) | `SKILL.md` broken references + `name`/trigger collisions between skills |
 | [carrylint](https://github.com/hyuga611/carrylint) | Skills with the author's machine or model baked in — absolute paths, undeclared CLIs, unresolved placeholders |
