@@ -1,5 +1,48 @@
 # Changelog
 
+## 0.9.0
+
+**`--code-blocks` went from 0.75% precision to 50%, measured on 80 skills across 4 repositories.**
+
+The flag existed because a reference is not always wrapped in backticks or link syntax. A path
+written as a runnable command argument carries no markup at all, so a scanner that only reads
+`` `code` `` spans and `[text](target)` cannot see it. That blind spot is not theoretical: in
+`openclaw/openclaw`, `.agents/skills/control-ui-e2e/SKILL.md` told the agent to run a test file
+that had been renamed, and the audit missed it. Eight lines above, the same file names a path in
+prose with backticks — that one was caught. The only difference was the markup.
+
+But reading fenced blocks naively made false positives the dominant output. Turning the flag on
+across `openclaw/openclaw` (46 skills), `anthropics/skills` (18), `obra/superpowers` (14) and
+`openclaw/clawsweeper` (2) produced **133 findings, of which 1 was a real defect.** Every one of
+the other 132 was read individually; each turned out to carry its own disqualifying signal, in the
+same document. The flag now uses them:
+
+- **A bare filename is not a repository path.** `gh workflow run release.yml` passes a name that
+  the tool resolves itself. Resolving it repository-relative reported workflows that plainly exist.
+  A candidate now needs a `/`.
+- **A path whose first segment does not exist has no foothold.** This is what `.artifacts/…` and
+  `jobs/…` are — output locations, absent by design — and what another project's tree looks like.
+- **`cd` out of the repository changes the frame of reference, and it stays changed.** One skill
+  ran `cd ~/Projects/agent-scripts` in its first block and wrote paths relative to *that* checkout
+  in later ones.
+- **A naming pattern the document declares is something the reader creates.** A skill that says
+  "name it `*.prototype.ts`" and then shows `src/wizard/setup.…prototype.ts` is not referencing a
+  file it ships.
+- **A fence can hold a transcript instead of a command.** `[Read plan file once: docs/…]` and
+  `PLAN_OR_REQUIREMENTS: Task 2 from docs/…` name paths without asking anything to be read. A line
+  must now look like a command invocation (leading `VAR=value` assignments are still read through).
+- **`exact/path/to/file.py` and `skills/path/SKILL.md` are template blanks**, not references.
+
+Result on the same corpus: **2 findings, 1 real.** The survivor is instructive and is the reason
+this flag stays opt-in. `openclaw/clawsweeper`'s `crabbox` skill runs
+`scripts/macos-host-region-preflight.sh`, which is absent from clawsweeper and present in
+`openclaw/crabbox` — the sibling repository the skill exists to document. No signal inside the
+document distinguishes that from a genuinely dead path, because the answer depends on which
+checkout the agent is standing in. A cross-repository reference is irreducibly ambiguous here.
+
+Also exported `declaredGlobMatcher` and `isCommandLine` so the two judgements can be tested and
+reused. Default behaviour is unchanged: without `--code-blocks`, fenced content is still skipped.
+
 ## 0.8.3
 
 - **Stopped reporting home-relative paths as broken references.** A reference beginning with

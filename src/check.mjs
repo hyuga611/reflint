@@ -174,6 +174,46 @@ export function looksLikePath(t) {
   return (t.includes('/') && !t.endsWith('/')) || CODE_EXT.test(t);
 }
 
+/** テンプレの穴埋めセグメント：`exact/path/to/file.py` `skills/path/SKILL.md` `your-app/main.ts` */
+const PLACEHOLDER_SEG =
+  /(?:^|\/)(?:path|paths|dir|folder|your[\w-]*|my[\w-]*|foo|bar|baz|example|sample)(?:\/|$)/i;
+
+/**
+ * 文書がバッククォート内で宣言した命名パターン（`*.prototype.ts` 等）に一致する参照は、
+ * 固定の参照ではなく「読者がこう名付けて作る」対象。
+ * openclaw の prototype-openclaw-tui が "name it `*.prototype.ts`" と書いた上で
+ * 実行例に具体名を並べており、その6行が誤検知になっていた。
+ */
+export function declaredGlobMatcher(text) {
+  const globs = [];
+  for (const m of String(text).matchAll(/`([^`\s]*\*[^`\s]*)`/g)) {
+    const g = m[1];
+    if (!/[./]/.test(g)) continue; // `*` 単体や `--flag=*` はパターンではない
+    const src = g
+      .split('*')
+      .map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+      .join('[^/]*');
+    globs.push(new RegExp('^' + src + '$'));
+  }
+  if (!globs.length) return () => false;
+  return (p) => globs.some((re) => re.test(p) || re.test(p.split('/').pop()));
+}
+
+/**
+ * その行が実際のコマンド起動か。フェンスの中には会話ログや擬似出力も入る
+ * （`[Read plan file once: docs/…]` や `PLAN_OR_REQUIREMENTS: Task 2 from docs/…`）。
+ * それらはパスを含んでいても、そのファイルを読めという指示ではない。
+ */
+export function isCommandLine(line) {
+  let s = String(line).replace(/^\s+/, '').replace(/^\$\s+/, '');
+  if (!s || /^[#[<|>]/.test(s)) return false;
+  // 先頭の環境変数代入は読み飛ばす（`CRABBOX_MACOS_TYPES=all scripts/x.sh`）
+  while (/^[A-Za-z_][A-Za-z0-9_]*=\S*\s+/.test(s)) s = s.replace(/^[A-Za-z_][A-Za-z0-9_]*=\S*\s+/, '');
+  const head = s.split(/\s+/)[0];
+  if (!head || head.endsWith(':')) return false; // `KEY: value` 形の擬似出力
+  return /^[\w./-]+$/.test(head);
+}
+
 /**
  * ドキュメント本文を走査して参照エラーを返す（純粋関数・テスト可能）。
  * @param text  ファイル本文
@@ -186,12 +226,20 @@ export function scan(text, { scripts = null, exists = () => true, codeBlocks = f
   const skipProse = (t) => ignore.has(t) || (isBareName(t) && FORMAT_NAMES.has(t));
   const findings = [];
   let inFence = false;
+  // いったんリポジトリ外へ cd した文書は、以降の相対パスの基準が違う。ブロックを越えて持続する
+  // （最初のブロックで `cd ~/Projects/agent-scripts` し、次のブロックからそこの相対で書く形が実在した）。
+  let fenceEscaped = false;
+  const declaredPattern = codeBlocks ? declaredGlobMatcher(text) : () => false;
   text.split(/\r?\n/).forEach((line, i) => {
     const ln = i + 1;
 
     // フェンス（``` / ~~~）の開閉。マーカ行自体は走査しない。
     if (/^\s*(`{3,}|~{3,})/.test(line)) {
       inFence = !inFence;
+      return;
+    }
+    if (inFence && /^\s*\$?\s*cd\s+(~|\/|[A-Za-z]:)/.test(line)) {
+      fenceEscaped = true;
       return;
     }
 
@@ -238,16 +286,32 @@ export function scan(text, { scripts = null, exists = () => true, codeBlocks = f
       }
     }
 
-    // 4) （opt-in）コードブロック内の裸のパス参照が実在するか。
-    //    誤検出ゼロ優先で「拡張子付きのリポ相対パス」だけに限定。--code-blocks で有効化。
-    if (codeBlocks && inFence) {
+    // 4) （opt-in）コードブロック内の裸のパス参照が実在するか。--code-blocks で有効化。
+    //
+    // 参照はバッククォートやリンク記法で囲まれているとは限らない。実行できる形で書かれた
+    // コマンドの引数には囲みが付かないので、囲みだけを見る走査からは構造的に見えない
+    // （openclaw/openclaw の control-ui-e2e が壊れたテストパスを指していたのを取りこぼした）。
+    //
+    // だがフェンスの中身を素朴に拾うと誤検知が支配する。4リポジトリ80スキルの実測で
+    // 「拡張子付きなら全部」は 133件出して真の欠陥は1件だった。下の除外は、その133件が
+    // 何だったかを1件ずつ見て、判定材料が同じ文書の中にあるものだけを落としている。
+    if (codeBlocks && inFence && !fenceEscaped && isCommandLine(line)) {
       for (const raw of line.split(/\s+/)) {
         const t = raw.replace(/^[('"`]+/, '').replace(/[)'"`,;:]+$/, '');
         if (!t || t.startsWith('#') || t.startsWith('/')) continue;
         if (/^[a-z][\w+.-]*:/i.test(t)) continue; // scheme (http: など)
+        // 裸のファイル名は、ツール自身が名前で解決する引数（`gh workflow run ci.yml`）。
+        // リポジトリ相対として解くと、実在するワークフローを軒並み壊れていると言う。
+        if (!t.includes('/')) continue;
+        if (t.startsWith('../')) continue; // リポジトリ外
+        if (t.includes('$') || t.includes('{')) continue; // 実行時に決まる
         if (!looksLikePath(t) || !CODE_EXT.test(t)) continue; // 拡張子付きのみ
         if (skipProse(t)) continue;
         const rel = t.replace(/^\.\//, '');
+        if (PLACEHOLDER_SEG.test(rel)) continue; // `tests/exact/path/to/test.py` 等の穴埋め
+        if (declaredPattern(rel)) continue; // 文書が命名パターンとして宣言している
+        // 先頭ディレクトリすら無いものは足場が無い＝生成物の置き場か、別プロジェクトの木。
+        if (!exists(rel.split('/')[0])) continue;
         if (!exists(rel)) {
           findings.push({ ln, kind: 'code-path', ref: t, msg: `reference \`${t}\` in code block does not exist` });
         }

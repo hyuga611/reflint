@@ -62,7 +62,7 @@ something that isn't there **and** deleting a file that a document still points 
 ```bash
 npx @hyuga/reflint            # AGENTS.md / llms.txt / CLAUDE.md を自動検出
 npx @hyuga/reflint docs/AGENTS.md llms.txt
-npx @hyuga/reflint --code-blocks   # ```コードブロック``` 内の拡張子付きパスも検査（opt-in）
+npx @hyuga/reflint --code-blocks   # ```コードブロック``` 内の、囲みの無いコマンド引数も検査（opt-in）
 npx @hyuga/reflint --format json   # 機械可読な JSON 出力（エディタ拡張・他ツール連携の下地）
 npx @hyuga/reflint --ignore llms-full.txt,docs/legacy.md   # 個別に無視（カンマ区切り・REFLINT_IGNORE でも可）
 npx @hyuga/reflint --since origin/main   # このPRで新しく壊れた参照だけで落とす（既存の債務は件数だけ報告・REFLINT_SINCE でも可）
@@ -105,7 +105,13 @@ await kernel.lintText(text, {
 - [x] Reference-integrity core: file paths (any language) + npm scripts (zero-dep) — `src/check.mjs`
 - [x] **GitHub Action** (`action.yml`) + inline PR annotations + self-CI
 - [x] `llms.txt` markdown-link referential integrity — repo-relative link targets must resolve (the wedge no one else covers in CI)
-- [x] Paths inside fenced code blocks — opt-in `--code-blocks` (extension-bearing, repo-relative paths only, to stay false-positive-free)
+- [x] Paths inside fenced code blocks — opt-in `--code-blocks`. A path written as a runnable command
+      argument carries no backticks and no link syntax, so the default scan cannot see it at all.
+      Measured on 80 skills across 4 repositories: reporting every extension-bearing path in a fence
+      gave 133 findings for 1 real defect, so the rule now requires a command-shaped line and drops
+      bare filenames, template blanks, declared naming patterns, output locations and anything after
+      a `cd` out of the repository — 2 findings, 1 real. Stays opt-in: a reference into a sibling
+      repository the document exists to describe is not separable from a dead one (see CHANGELOG 0.9.0)
 - [x] textlint rule adapter (`@hyuga/reflint/textlint-rule`, experimental) — reuse reflint inside an existing textlint pass
 - [x] `--format json` machine-readable output + monorepo resolution (nearest `package.json`, path found from the file's dir or repo root)
 - [x] Precision pass — prose mentions of format names no longer flagged, plus `--ignore` / `REFLINT_IGNORE` as an escape hatch

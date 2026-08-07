@@ -89,10 +89,18 @@ test('codeBlocks 無効なら コードブロック内の裸パスは見ない�
 });
 
 test('codeBlocks 有効なら コードブロック内の存在しないパスを検出', () => {
-  const f = scan(fenced, { exists: (p) => p === 'src/index.js', codeBlocks: true });
+  // 先頭ディレクトリが実在することは条件（足場の無いパスは別プロジェクトの木か生成物）。
+  const tree = new Set(['src', 'scripts', 'src/index.js']);
+  const f = scan(fenced, { exists: (p) => tree.has(p), codeBlocks: true });
   assert.equal(f.length, 1);
   assert.equal(f[0].kind, 'code-path');
   assert.match(f[0].msg, /scripts\/gen\.py/);
+});
+
+test('codeBlocks: 先頭ディレクトリが無いものは足場が無いので見ない', () => {
+  // `.artifacts/…` `jobs/…` のような生成物の置き場と、別プロジェクトの木がこれで落ちる。
+  const body = ['```bash', 'cat .artifacts/test-perf/memory.json', '```'].join('\n');
+  assert.equal(scan(body, { exists: () => false, codeBlocks: true }).length, 0);
 });
 
 test('codeBlocks: フェンスマーカ行・npm/flag・拡張子なしは誤検出しない', () => {
@@ -194,9 +202,83 @@ test('--ignore で指定した参照は無視される', () => {
 
 test('コードブロック内でもフォーマット名は誤検出しない', () => {
   const text = '```\nAGENTS.md llms.txt src/gone.ts\n```';
-  const f = scan(text, { exists: () => false, codeBlocks: true });
+  const f = scan(text, { exists: (p) => p === 'src', codeBlocks: true });
   assert.equal(f.length, 1);
   assert.match(f[0].msg, /src\/gone\.ts/);
+});
+
+// --- codeBlocks の精度（4リポジトリ80スキルの実測・2026-08）---
+// 「フェンス内の拡張子付きパスなら全部」は 133件出して真の欠陥は1件だった。
+// 以下はその132件が何だったか。判定材料はいずれも同じ文書の中にある。
+
+test('codeBlocks: 裸のファイル名は対象外（ツールが名前で解決する引数）', () => {
+  // `gh workflow run` はワークフロー名を受け取る。リポジトリ相対として解くと
+  // .github/workflows に実在するものを軒並み「壊れている」と言ってしまう。
+  const body = ['```bash', 'gh workflow run release.yml --repo openclaw/openclaw', '```'].join('\n');
+  assert.deepEqual(scan(body, { exists: () => false, codeBlocks: true }), []);
+});
+
+test('codeBlocks: リポジトリ外へ cd したらブロックを越えて以降を見ない', () => {
+  const body = [
+    '```bash',
+    'cd ~/Projects/other-repo',
+    'python3 skills/relay/run.py targets',
+    '```',
+    '説明の文。',
+    '```bash',
+    'python3 skills/relay/run.py ask',
+    '```',
+  ].join('\n');
+  // `skills` がこのリポジトリに実在していても、基準が変わっているので拾わない。
+  assert.deepEqual(scan(body, { exists: (p) => p === 'skills', codeBlocks: true }), []);
+});
+
+test('codeBlocks: 文書が宣言した命名パターンに一致する参照は作る側', () => {
+  const body = [
+    'Keep the prototype beside the target and name it `*.prototype.ts`.',
+    '```bash',
+    'node --import tsx src/wizard/setup.prototype.ts --variant=baseline',
+    '```',
+  ].join('\n');
+  assert.deepEqual(scan(body, { exists: (p) => p === 'src', codeBlocks: true }), []);
+});
+
+test('codeBlocks: 会話ログ・KEY: value の擬似出力はコマンドではない', () => {
+  const body = [
+    '```',
+    '[Read plan file once: docs/plans/feature.md]',
+    'PLAN_OR_REQUIREMENTS: Task 2 from docs/plans/deploy.md',
+    '```',
+  ].join('\n');
+  assert.deepEqual(scan(body, { exists: (p) => p === 'docs', codeBlocks: true }), []);
+});
+
+test('codeBlocks: テンプレの穴埋めセグメントは参照ではない', () => {
+  const body = ['```bash', 'pytest tests/exact/path/to/test.py', 'wc -w skills/path/SKILL.md', '```'].join('\n');
+  const exists = (p) => p === 'tests' || p === 'skills';
+  assert.deepEqual(scan(body, { exists, codeBlocks: true }), []);
+});
+
+test('codeBlocks: 先頭の環境変数代入を挟んでもコマンドとして読む', () => {
+  const body = ['```sh', 'FOO_TYPES=all scripts/preflight.sh', '```'].join('\n');
+  const f = scan(body, { exists: (p) => p === 'scripts', codeBlocks: true });
+  assert.equal(f.length, 1);
+  assert.match(f[0].msg, /scripts\/preflight\.sh/);
+});
+
+test('codeBlocks: 囲みの無いコマンド引数を拾う（この規則の目的）', () => {
+  // openclaw/openclaw の control-ui-e2e が指していた形。バッククォートもリンクも無いので、
+  // 囲みだけを見る走査からは構造的に見えなかった。
+  const body = [
+    '```bash',
+    'node scripts/run-vitest.mjs run --config test/vitest/ui.config.ts ui/src/ui/e2e/chat-flow.e2e.test.ts',
+    '```',
+  ].join('\n');
+  const tree = new Set(['ui', 'scripts', 'test', 'scripts/run-vitest.mjs', 'test/vitest/ui.config.ts']);
+  const f = scan(body, { exists: (p) => tree.has(p), codeBlocks: true });
+  assert.equal(f.length, 1);
+  assert.equal(f[0].kind, 'code-path');
+  assert.match(f[0].msg, /chat-flow\.e2e\.test\.ts/);
 });
 
 // --- 実データ監査（公開リポジトリ 139文書・2026-07）由来の精度修正 ---
