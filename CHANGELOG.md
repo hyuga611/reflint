@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.9.1
+
+- **The copyright holder in `LICENSE` is now `hyuga611`**, matching every other package
+  published from this account. The terms were MIT either way; what changed is that the grant
+  no longer appears to come from two different parties, which left anyone trying to work out
+  who they had received permission from with two answers and no way to choose.
+- Releases are now made by pushing a tag: the workflow runs the tests, refuses to publish if
+  the tag and `package.json` disagree, and publishes with
+  [provenance](https://docs.npmjs.com/generating-provenance-statements) using npm trusted
+  publishing, so no long-lived token is stored anywhere.
+
 ## 0.9.0
 
 **`--code-blocks` went from 0.75% precision to 50%, measured on 80 skills across 4 repositories.**

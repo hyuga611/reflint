@@ -1,6 +1,6 @@
 {
   "name": "@hyuga/reflint",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "Reference-integrity linter for AGENTS.md / llms.txt / CLAUDE.md — fail CI when agent config points at commands, scripts, or paths that no longer exist. Language-agnostic, zero-dependency.",
   "type": "module",
   "main": "src/check.mjs",
