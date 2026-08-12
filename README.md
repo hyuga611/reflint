@@ -32,7 +32,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }      # needed for the "new in this PR" diff
-      - uses: hyuga611/reflint@v1     # auto-detects AGENTS.md / llms.txt / CLAUDE.md
+      - uses: hyuga611/reflint@v0     # auto-detects AGENTS.md / llms.txt / CLAUDE.md
 ```
 
 Findings show up as inline PR annotations, and the job fails (exit 1) so a stale config can't be merged.
@@ -51,7 +51,7 @@ reflint: 1 new since origin/main broken reference (12 pre-existing, not failing 
 something that isn't there **and** deleting a file that a document still points at.
 
 ```yaml
-      - uses: hyuga611/reflint@v1
+      - uses: hyuga611/reflint@v0
         with:
           since: ''      # default: the PR base on pull_request
           # since: off   # check every reference, every time (the old behaviour)
