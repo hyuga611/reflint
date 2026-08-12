@@ -1,0 +1,43 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.8/schema.json",
+
+  // Linter only. The formatter is deliberately off: it rewrites hand-grouped
+  // word lists (SKIP_DIRS, RESERVED, …) to one entry per line, which reads worse
+  // than the grouping that is there now. Nothing here reformats code — every
+  // rule below is about something being wrong, not about how it is laid out.
+  "formatter": { "enabled": false },
+  "assist": { "enabled": false },
+
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+
+      // Style rules are preference, and this codebase has consistent preferences
+      // already (single quotes, semicolons, 2-space indent). Enforcing biome's
+      // instead would be churn, not improvement.
+      "style": "off",
+
+      "complexity": {
+        "recommended": true,
+        // "a && a.b" -> "a?.b" and friends. Both are correct; picking one is taste.
+        "useOptionalChain": "off",
+        "useFlatMap": "off",
+        "useLiteralKeys": "off",
+        // Escapes like /[_\-]/ and /[\[\]]/ are redundant but defensive, and
+        // removing them by hand is how a character class quietly changes meaning.
+        "noUselessEscapeInRegex": "off"
+      },
+
+      "suspicious": {
+        "recommended": true,
+        // while ((m = re.exec(s))) is the intended way to walk a global regex.
+        // Used deliberately in about a dozen places here.
+        "noAssignInExpressions": "off",
+        // Tests contain "${...}" as literal text on purpose: the linters under
+        // test have to detect unexpanded placeholders in other people's files.
+        "noTemplateCurlyInString": "off"
+      }
+    }
+  }
+}

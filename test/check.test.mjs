@@ -136,7 +136,7 @@ test('textlint rule: Document で findings を report する（mock context）',
         Object.assign(this, opts);
       }
     },
-    report: (node, err) => reported.push(err),
+    report: (_node, err) => reported.push(err),
     getSourceCode: () => ({ text: '参照 `src/missing.ts`' }),
   };
   const handlers = reflintRule(ctx, { exists: (p) => p !== 'src/missing.ts', scripts: null });
@@ -305,7 +305,7 @@ test('パスではない文字列を参照扱いしない（実データ由来�
 
 test('拡張子の無い参照は、先頭ディレクトリが実在するときだけ検査する', () => {
   // `arnica/depsguard` はリポジトリ名であってパスではない（arnica/ は存在しない）
-  assert.deepEqual(scan('`arnica/depsguard`', { exists: (p) => false }), []);
+  assert.deepEqual(scan('`arnica/depsguard`', { exists: (_p) => false }), []);
   // crates/ が実在するリポジトリなら、crates/stack-cli の欠落は本物の指摘
   const f = scan('`crates/stack-cli`', { exists: (p) => p === 'crates' });
   assert.equal(f.length, 1);

@@ -17,7 +17,8 @@
   ],
   "scripts": {
     "poc": "node src/check.mjs examples/AGENTS.sample.md",
-    "test": "node --test"
+    "test": "node --test",
+    "lint": "npx --yes @biomejs/biome@2.5.8 lint src test"
   },
   "keywords": [
     "agents.md",
