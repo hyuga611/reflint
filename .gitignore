@@ -2,3 +2,7 @@ node_modules/
 dist/
 *.log
 .DS_Store
+
+# 生成物。リリースは npm install で行うので、機械ごとの解決結果を配らない。
+# tenken では隣のフォルダを指す link エントリが入り、CI で解決不能になった。
+package-lock.json
