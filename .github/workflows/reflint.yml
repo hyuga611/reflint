@@ -15,10 +15,18 @@ jobs:
       - uses: ./
 
   test:
+    # engines says >=18, and until 2026-08-12 nothing ever ran it: this job pinned
+    # Node 20. orogami declared the same floor, was broken on 18, on 20.18 and on
+    # 22.0-22.6, and its single Node 20 job stayed green throughout. The break was
+    # not monotonic, so one version cannot stand in for the others.
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['18.x', '20.x', '22.x', '24.x']
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: ${{ matrix.node }}
       - run: node --test
