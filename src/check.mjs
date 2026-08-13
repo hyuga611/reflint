@@ -10,6 +10,16 @@
 import { readFileSync, existsSync, readdirSync, realpathSync } from 'node:fs';
 import { resolve, join, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
+
+// Read rather than hardcoded: a version constant is one more place a release has to
+// remember, and the one that nobody notices going stale.
+const VERSION = (() => {
+  try {
+    return JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
+  } catch {
+    return 'unknown';
+  }
+})();
 import { isGitRepo, resolveRef, mergeBase, readAtRef, existsAtRef, scriptsAtRef } from './git.mjs';
 
 // npm/pnpm/yarn が定義なしでも動く組み込みサブコマンドは除外する
@@ -352,7 +362,28 @@ export function toJson(results) {
   return { ok: findings.length === 0, count: findings.length, findings };
 }
 
+const HELP = `reflint ${VERSION} — do the paths in your agent instructions still exist?
+
+  reflint [file ...]        default: AGENTS.md, llms.txt, CLAUDE.md
+
+  --code-blocks             also check paths inside fenced code blocks
+  --ignore a,b              skip these paths (repeatable, or REFLINT_IGNORE)
+  --since <ref> | --base    only files changed against a git ref ("off" for all)
+  --format json | --json    machine-readable output
+  -h, --help  ·  -v, --version
+
+  exit 0 nothing to fix (or nothing to check) / 1 findings / 2 could not run
+`;
+
 export function main(argv) {
+  if (argv.includes('--help') || argv.includes('-h')) {
+    process.stdout.write(HELP);
+    return 0;
+  }
+  if (argv.includes('--version') || argv.includes('-v')) {
+    process.stdout.write(VERSION + '\n');
+    return 0;
+  }
   const inActions = process.env.GITHUB_ACTIONS === 'true';
   const root = process.cwd();
   let codeBlocks = argv.includes('--code-blocks') || process.env.REFLINT_CODE_BLOCKS === '1';
@@ -362,6 +393,7 @@ export function main(argv) {
     (process.env.REFLINT_IGNORE || '').split(',').map((s) => s.trim()).filter(Boolean),
   );
   const files0 = [];
+  const unknown = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--' || a === '--code-blocks' || a === '--json') continue;
@@ -396,7 +428,20 @@ export function main(argv) {
       since = a.slice(7);
       continue;
     }
+    // A token starting with "-" is never a file. Falling through to files0 made an
+    // unrecognised flag a path to check, which then could not be read — so a mistyped
+    // CI flag turned a passing lint into "reflint: cannot read --strcit", and the
+    // fix somebody reaches for is to delete the step.
+    if (a.startsWith('-')) {
+      unknown.push(a);
+      continue;
+    }
     files0.push(a);
+  }
+  if (unknown.length) {
+    console.error(`reflint: unknown option ${unknown.join(', ')}`);
+    console.error('reflint: run with --help to see what it takes');
+    return 2;
   }
   // GitHub Actions の pull_request では、指定が無くても PR のベースを既定にする。
   // `--since off` は明示的に「全件検査に戻す」の意味。
