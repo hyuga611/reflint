@@ -231,36 +231,111 @@ export function isCommandLine(line) {
  * @param exists  パスの実在判定 `(relPath) => boolean`
  * @param ignore  追加で無視する参照名の Set（--ignore / reflint.ignore）
  */
+// HTML コメントは無効化された記述で、参照ではない（`<!-- 旧: `docs/old.md` -->`）。
+// 複数行にまたがるので開閉を状態で持ち、行内の該当区間だけを落とす（行の残りは走査する）。
+// 行番号しか報告しないので、桁を保つ必要はない。
+function stripHtmlComments(line, state) {
+  let out = '';
+  let i = 0;
+  while (i < line.length) {
+    if (state.open) {
+      const end = line.indexOf('-->', i);
+      if (end < 0) return out; // 行末までコメントが続く
+      state.open = false;
+      i = end + 3;
+    } else {
+      const start = line.indexOf('<!--', i);
+      if (start < 0) return out + line.slice(i);
+      out += line.slice(i, start);
+      state.open = true;
+      i = start + 4;
+    }
+  }
+  return out;
+}
+
 export function scan(text, { scripts = null, exists = () => true, codeBlocks = false, ignore = new Set() } = {}) {
   // 散文中のフォーマット名（裸のファイル名のみ）と、ユーザー指定の無視リスト。
   const skipProse = (t) => ignore.has(t) || (isBareName(t) && FORMAT_NAMES.has(t));
   const findings = [];
-  let inFence = false;
+  const suppressed = []; // コード扱いで見送った指摘（件数だけ返す）
+  let fence = null; // フェンス内は { ch, len }（開始マーカの文字と長さ）、外は null
   // いったんリポジトリ外へ cd した文書は、以降の相対パスの基準が違う。ブロックを越えて持続する
   // （最初のブロックで `cd ~/Projects/agent-scripts` し、次のブロックからそこの相対で書く形が実在した）。
   let fenceEscaped = false;
+  const htmlComment = { open: false };
+  // インデントコードブロック（4スペース以上）。リストのネストと区別するため、
+  // 「直前が空行」かつ「直前の非空行がリスト項目でない」ときだけ開始する。
+  //   - 親                     ← リスト。4スペース下げの子はコードではない
+  //       - 子 `path.md`
+  // に対して
+  //   出力例:                  ← 段落。空行を挟んだ4スペース下げはコード
+  //
+  //       `path.md`
+  let inIndentedCode = false;
+  let prevBlank = true;
+  let lastNonBlankListy = false;
   const declaredPattern = codeBlocks ? declaredGlobMatcher(text) : () => false;
-  text.split(/\r?\n/).forEach((line, i) => {
+  text.split(/\r?\n/).forEach((rawLine, i) => {
     const ln = i + 1;
+    const line = stripHtmlComments(rawLine, htmlComment);
+
+    // 行をまたぐ状態は early return より先に進めておく。
+    const isBlank = line.trim() === '';
+    const indentWidth = (/^[ \t]*/.exec(line)[0]).replace(/\t/g, '    ').length;
+    const listy = /^[ \t]*(?:[-*+]|\d+[.)])\s/.test(line);
+    const prevWasBlank = prevBlank;
+    const prevNonBlankListy = lastNonBlankListy;
+    prevBlank = isBlank;
+    if (!isBlank) lastNonBlankListy = listy;
 
     // フェンス（``` / ~~~）の開閉。マーカ行自体は走査しない。
-    if (/^\s*(`{3,}|~{3,})/.test(line)) {
-      inFence = !inFence;
+    // 閉じは CommonMark に合わせて「開始と同じ文字・開始以上の長さ・情報文字列なし」だけ認める。
+    // 素朴な !inFence トグルだと、``` の例を ```` で囲んだ文書でマーカ数が奇数になり、
+    // そこから下がずっと「フェンス内」に張り付く（実測 2026-08: 実在の AGENTS.md 118本中1本、
+    // 3,461行の文書で見出しや地の文までフェンス内と誤認されていた）。
+    const fm = /^\s*(`{3,}|~{3,})\s*(.*)$/.exec(line);
+    if (fm) {
+      const ch = fm[1][0];
+      const len = fm[1].length;
+      if (!fence) fence = { ch, len };
+      else if (ch === fence.ch && len >= fence.len && fm[2].trim() === '') fence = null;
+      // 閉じ条件を満たさないマーカ行はフェンスの中身。いずれにせよマーカ行は走査しない。
       return;
     }
+    const inFence = fence !== null;
     if (inFence && /^\s*\$?\s*cd\s+(~|\/|[A-Za-z]:)/.test(line)) {
       fenceEscaped = true;
       return;
     }
+    // インデントコードブロックの開始・終了。空行では状態を変えない（ブロック内の空行を許す）。
+    if (!inFence && !isBlank) {
+      if (indentWidth >= 4) {
+        if (!inIndentedCode && prevWasBlank && !prevNonBlankListy) inIndentedCode = true;
+      } else {
+        inIndentedCode = false;
+      }
+    }
+    // コード扱いの行は既定では参照とみなさない。--help は --code-blocks を
+    // "also check paths inside fenced code blocks" と説明しているのに、この判定を見ていたのは
+    // 下の 4) だけで、1)〜3) は素通しだった（＝フラグの有無で結果が変わらなかった）。
+    // 見送った分は捨てずに別のバケツへ積み、件数だけ呼び出し側に返す。
+    // 「減った」と「見ていない」が区別できないのが一番困るため（0.9.2 と同じ失敗の形）。
+    const sink = (inFence || inIndentedCode) && !codeBlocks ? suppressed : findings;
 
     // 1) `npm run <script>` などが package.json に存在するか
-    for (const m of line.matchAll(/\b(?:npm run|pnpm run|yarn run|bun run|pnpm|yarn)\s+([\w:.-]+)/g)) {
+    // 先頭が `-` のトークンはスクリプト名ではなくフラグ。`pnpm -r build` /
+    // `pnpm --filter @app/cli test` / `pnpm -w lint` を、それぞれ "-r" "--filter" "-w" という
+    // 名前のスクリプトが無い、と報告していた（実測 2026-08: script 検出 39件中 16件がこれ）。
+    // フラグが付く形は workspace 単位の実行で、ルートの package.json は判定材料にならないため、
+    // 名前を拾わずその呼び出しごと見送る。
+    for (const m of line.matchAll(/\b(?:npm run|pnpm run|yarn run|bun run|pnpm|yarn)\s+([\w:.][\w:.-]*)/g)) {
       const name = m[1];
       if (RESERVED.has(name)) continue;
       if (scripts && !scripts.has(name)) {
         const near = [...scripts].sort((a, b) => lev(a, name) - lev(b, name))[0];
         const hint = near && lev(near, name) <= 2 ? ` (did you mean "${near}"?)` : '';
-        findings.push({ ln, kind: 'script', ref: name, msg: `\`${m[0]}\` — no script "${name}" in package.json${hint}` });
+        sink.push({ ln, kind: 'script', ref: name, msg: `\`${m[0]}\` — no script "${name}" in package.json${hint}` });
       }
     }
 
@@ -277,7 +352,7 @@ export function scan(text, { scripts = null, exists = () => true, codeBlocks = f
         .replace(/[#?].*$/, '');
       if (!target || !isRepoPath(target, exists)) continue;
       if (!exists(target)) {
-        findings.push({ ln, kind: 'path', ref: target, msg: `reference \`${t}\` does not exist` });
+        sink.push({ ln, kind: 'path', ref: target, msg: `reference \`${t}\` does not exist` });
       }
     }
 
@@ -292,7 +367,7 @@ export function scan(text, { scripts = null, exists = () => true, codeBlocks = f
       if (!looksLikePath(target) || ignore.has(target)) continue;
       const rel = target.replace(/[#?].*$/, '').replace(/^\.\//, ''); // アンカー/クエリを外して実在判定
       if (rel && !exists(rel)) {
-        findings.push({ ln, kind: 'link', ref: rel, msg: `link target \`${target}\` does not exist` });
+        sink.push({ ln, kind: 'link', ref: rel, msg: `link target \`${target}\` does not exist` });
       }
     }
 
@@ -328,6 +403,9 @@ export function scan(text, { scripts = null, exists = () => true, codeBlocks = f
       }
     }
   });
+  // 呼び出し側は戻り値を配列として扱うので、件数は非列挙プロパティで足す
+  // （既存の deepEqual ベースのテストと JSON 出力を壊さない）。
+  Object.defineProperty(findings, 'skipped', { value: suppressed.length, enumerable: false });
   return findings;
 }
 
@@ -359,7 +437,8 @@ export function toJson(results) {
   const findings = results.flatMap(({ file, findings }) =>
     findings.map((f) => ({ file, line: f.ln || 1, kind: f.kind, ref: f.ref ?? null, message: f.msg })),
   );
-  return { ok: findings.length === 0, count: findings.length, findings };
+  const skipped = results.reduce((n, r) => n + (r.findings.skipped ?? 0), 0);
+  return { ok: findings.length === 0, count: findings.length, skipped, findings };
 }
 
 const HELP = `reflint ${VERSION} — do the paths in your agent instructions still exist?
@@ -539,12 +618,15 @@ export function main(argv) {
   // 黙った理由は必ず言う（既存の壊れた参照を見逃したのか、そもそも無いのかが分からないのが一番困る）
   const scope = since ? ` new since ${since}` : '';
   const carried = preexisting > 0 ? ` (${preexisting} pre-existing, not failing this run — run without --since to see them)` : '';
+  // コードブロックの中で見送った件数。0件と「見ていない」を混同させない。
+  const skipped = results.reduce((n, r) => n + (r.findings.skipped ?? 0), 0);
+  const held = skipped > 0 ? ` (${skipped} inside code blocks, not checked — run with --code-blocks)` : '';
 
   if (total > 0) {
-    console.error(`\nreflint: ${total}${scope} broken reference${total === 1 ? '' : 's'}${carried}`);
+    console.error(`\nreflint: ${total}${scope} broken reference${total === 1 ? '' : 's'}${carried}${held}`);
     return 1;
   }
-  console.log(`reflint: all references resolve${scope ? ` (no new breakage since ${since})` : ''}${carried}`);
+  console.log(`reflint: all references resolve${scope ? ` (no new breakage since ${since})` : ''}${carried}${held}`);
   return 0;
 }
 

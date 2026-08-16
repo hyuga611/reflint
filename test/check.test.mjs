@@ -168,7 +168,7 @@ test('toJson: ref が無い指摘でもキーは落とさない（null で出す
 });
 
 test('toJson: 空なら ok:true', () => {
-  assert.deepEqual(toJson([{ file: 'a', findings: [] }]), { ok: true, count: 0, findings: [] });
+  assert.deepEqual(toJson([{ file: 'a', findings: [] }]), { ok: true, count: 0, skipped: 0, findings: [] });
 });
 
 test('Windows絶対パス・NASパスは対象外（性能＆誤検出防止）', () => {
@@ -371,4 +371,117 @@ test('diffFindings: ベース側に何も無ければ全部が新規（このPR�
 test('scan: 指摘に安定した参照キー(ref)が付く', () => {
   const f = scan('見よ `docs/gone.md` と `npm run nope`', { scripts: new Set(['build']), exists: () => false });
   assert.deepEqual(f.map((x) => [x.kind, x.ref]).sort(), [['path', 'docs/gone.md'], ['script', 'nope']]);
+});
+
+// --- 実データ監査（AGENTS.md/CLAUDE.md を持つ公開リポジトリ 118本・2026-08）由来 ---
+// 208件の指摘のうち 23件が下記のノイズだった。全部 script 種。
+
+const S = new Set(['build', 'test']);
+
+test('pnpm のフラグをスクリプト名として報告しない', () => {
+  const text = ['pnpm -r build', 'pnpm --filter @app/cli test', 'pnpm -w lint'].join('\n');
+  assert.deepEqual(scan(text, { scripts: S, exists: () => true }), []);
+});
+
+test('フラグが無い呼び出しは従来どおり検証する（抑制のやり過ぎ防止）', () => {
+  const f = scan('`npm run nope`', { scripts: S, exists: () => true });
+  assert.equal(f.length, 1);
+  assert.equal(f[0].ref, 'nope');
+});
+
+// フェンスの開閉は CommonMark 準拠（同じ文字・開始以上の長さ・情報文字列なし）。
+// 素朴な !inFence トグルだと、``` の例を ```` で囲んだ文書でマーカ数が奇数になり、
+// 以降ずっとフェンス内扱いになる。フェンス内を既定で飛ばす仕様と組み合わさると、
+// 「検査していないのに all references resolve」と報告する（0.3.0 で潰したのと同じ失敗の形）。
+
+test('4連フェンスの中の3連は閉じ扱いにしない（以降を黙って飛ばさない）', () => {
+  const text = ['````markdown', '```', '````', '', '後続: `missing/real.md`'].join('\n');
+  const f = scan(text, { exists: () => false });
+  assert.equal(f.length, 1);
+  assert.equal(f[0].ref, 'missing/real.md');
+});
+
+test('情報文字列付きのマーカはフェンスを閉じない', () => {
+  const text = ['```sh', '```js', 'echo hi', '```', '後続: `missing/real.md`'].join('\n');
+  const f = scan(text, { exists: () => false });
+  assert.equal(f.length, 1);
+});
+
+// --code-blocks は --help で "also check paths inside fenced code blocks" と説明している。
+// 1)〜3) のスキャナがこの判定を見ておらず、フラグの有無で結果が変わらなかった。
+
+test('フェンス内の参照は既定では指摘しない', () => {
+  const text = ['```', '`missing/in-fence.md` を参照', '```'].join('\n');
+  assert.deepEqual(scan(text, { exists: () => false }), []);
+});
+
+test('--code-blocks を付けるとフェンス内も指摘する', () => {
+  const text = ['```', '`missing/in-fence.md` を参照', '```'].join('\n');
+  const f = scan(text, { exists: () => false, codeBlocks: true });
+  assert.ok(f.some((x) => x.ref === 'missing/in-fence.md'));
+});
+
+// HTML コメントとインデントコードブロック。上のコーパス118本では出現0件だったが、
+// 再現は取れているので閉じておく（増えたときに黙って通さないため）。
+
+test('HTML コメント内の参照は指摘しない', () => {
+  assert.deepEqual(scan('<!-- 旧: `missing/old.md` -->', { exists: () => false }), []);
+});
+
+test('複数行にまたがる HTML コメントも最後まで無視する', () => {
+  const text = ['<!--', 'メモ', '`missing/multi.md`', '-->', '本文 `missing/real.md`'].join('\n');
+  const f = scan(text, { exists: () => false });
+  assert.deepEqual(f.map((x) => x.ref), ['missing/real.md']);
+});
+
+test('行内コメントは、その区間だけ落として残りは走査する', () => {
+  const f = scan('前 `missing/a.md` <!-- `missing/b.md` --> 後 `missing/c.md`', { exists: () => false });
+  assert.deepEqual(f.map((x) => x.ref).sort(), ['missing/a.md', 'missing/c.md']);
+});
+
+test('空行を挟んだ4スペース下げはコードブロックとして飛ばす', () => {
+  const text = ['出力例:', '', '    `missing/indented.md`'].join('\n');
+  assert.deepEqual(scan(text, { exists: () => false }), []);
+});
+
+test('リストのネストはコードブロックではない（抑制のやり過ぎ防止）', () => {
+  const text = ['- 親', '    - 子 `missing/nested.md`'].join('\n');
+  const f = scan(text, { exists: () => false });
+  assert.deepEqual(f.map((x) => x.ref), ['missing/nested.md']);
+});
+
+test('リスト項目のあとに空行を挟んだ字下げも、まだリストの続き', () => {
+  const text = ['- 親', '', '    続きの段落 `missing/cont.md`'].join('\n');
+  const f = scan(text, { exists: () => false });
+  assert.deepEqual(f.map((x) => x.ref), ['missing/cont.md']);
+});
+
+// 「減った」と「見ていない」を区別できるようにする。0.9.2 で潰したのと同じで、
+// 検査していないことを検査に通ったと報告するのが一番まずい。
+
+test('コードブロックで見送った件数を返す', () => {
+  const text = ['```', '`missing/held.md`', '```', '`missing/shown.md`'].join('\n');
+  const f = scan(text, { exists: () => false });
+  assert.deepEqual(f.map((x) => x.ref), ['missing/shown.md']);
+  assert.equal(f.skipped, 1);
+});
+
+test('--code-blocks 時は見送りが無いので skipped は 0', () => {
+  const text = ['```', '`missing/held.md`', '```'].join('\n');
+  const f = scan(text, { exists: () => false, codeBlocks: true });
+  assert.equal(f.skipped, 0);
+  assert.equal(f.length, 1);
+});
+
+test('skipped は配列としての等価性を壊さない（非列挙）', () => {
+  const f = scan(['```', '`missing/held.md`', '```'].join('\n'), { exists: () => false });
+  assert.deepEqual(f, []);
+  assert.equal(f.skipped, 1);
+});
+
+test('toJson は見送り件数を持ち回る', () => {
+  const findings = scan(['```', '`missing/held.md`', '```'].join('\n'), { exists: () => false });
+  const j = toJson([{ file: 'AGENTS.md', findings }]);
+  assert.equal(j.ok, true);
+  assert.equal(j.skipped, 1);
 });
