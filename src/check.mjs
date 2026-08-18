@@ -34,6 +34,12 @@ const DEFAULT_FILES = ['AGENTS.md', 'llms.txt', 'CLAUDE.md'];
 // 参照エラーではない（例: "your `AGENTS.md`, `llms.txt`, or `CLAUDE.md`"）。
 // ディレクトリ区切りを含む書き方（`docs/llms.txt`）は明示的な参照なので対象のまま。
 // リンタは誤検出ひとつで捨てられるので、ここは検出漏れより精度を優先する。
+// 「これはやるな」と書いてある行。AGENTS.md / CLAUDE.md には普通に並ぶ文で、
+// そこに出てくるコマンドやパスは実行される手順ではない。区別せずに数えていたため、
+// 消えたスクリプトを「使うな」と明記した人だけが壊れた参照として報告されていた。
+// 丁寧に書いた人ほど刺さる形で、carrylint 0.4.1 / skills-lint 0.9.0 と同じ（語彙も揃えた）。
+export const PROHIBITION = /\b(?:never|do not|don't|doesn't|must not|should not|avoid|prohibited|forbidden|no need to)\b|禁止|するな|しないで|してはいけない|不可/i;
+
 export const FORMAT_NAMES = new Set([
   'AGENTS.md', 'CLAUDE.md', 'GEMINI.md', 'SKILL.md', 'README.md',
   'llms.txt', 'llms-full.txt', '.cursorrules', '.windsurfrules',
@@ -322,6 +328,10 @@ export function scan(text, { scripts = null, exists = () => true, codeBlocks = f
     // 見送った分は捨てずに別のバケツへ積み、件数だけ呼び出し側に返す。
     // 「減った」と「見ていない」が区別できないのが一番困るため（0.9.2 と同じ失敗の形）。
     const sink = (inFence || inIndentedCode) && !codeBlocks ? suppressed : findings;
+
+    // 禁止文はフェンスの外でだけ判定する。フェンス内の `# never edit this` のような
+    // コメントで、その下のブロックの本物の参照まで落とさないため。
+    if (!inFence && !inIndentedCode && PROHIBITION.test(line)) return;
 
     // 1) `npm run <script>` などが package.json に存在するか
     // 先頭が `-` のトークンはスクリプト名ではなくフラグ。`pnpm -r build` /

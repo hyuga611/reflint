@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.12.0
+
+### 「これはやるな」と書いた人だけが警告されていた
+
+AGENTS.md / CLAUDE.md には禁止文が普通に並ぶ。ところがその中のコマンドやパスを、
+実行される手順として数えていた:
+
+    Never run npm run release; releases are performed by a human.
+    → `npm run release` — no script "release" in package.json
+
+    Never read or execute `scripts/deprecated.sh`; it was removed after the migration.
+    → reference `scripts/deprecated.sh` does not exist
+
+どちらも**正しい書き方**だ。消えたものを「使うな」と明記してあるのだから、
+存在しないのは当たり前で、報告する意味がない。にもかかわらず、明記した人だけが
+壊れた参照を持っていることになる。
+
+- 禁止文の行は参照として走査しない。判定はフェンスの外だけで行う——フェンス内の
+  `# never edit this` のようなコメントで、その下のブロックの本物の参照まで
+  落とさないため。
+- 禁止文でない行は従来どおり（回帰テスト済み）。
+
+carrylint 0.4.1 / skills-lint 0.9.0 と同じ形。テキスト規則は「言及」を見ていて
+「実行」を見ていないので、危険なものほど declare・forbid・scope するために言及する
+丁寧な書き手に誤検知が集中する。敵対的入力監査（2026-08）で発見。
+
 ## 0.11.0
 
 `AGENTS.md` / `CLAUDE.md` を持つ公開リポジトリ **118本**に対して、修正前後の版を両方走らせて測った。

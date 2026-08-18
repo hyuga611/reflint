@@ -485,3 +485,31 @@ test('toJson は見送り件数を持ち回る', () => {
   assert.equal(j.ok, true);
   assert.equal(j.skipped, 1);
 });
+
+// AGENTS.md / CLAUDE.md には「これはやるな」が普通に並ぶ。ところが禁止文の中の
+// コマンドやパスを、実行される手順として数えていたので、
+// 消えたものを「使うな」と明記した人だけが壊れた参照として報告されていた。
+// carrylint 0.4.1・skills-lint 0.9.0 と同じ形（テキスト規則は言及と実行を区別しない）。
+test('禁止文の中のスクリプト名は手順ではない', () => {
+  const f = scan('Never run `npm run release`; releases are performed by a human.', {
+    scripts: new Set(['test']),
+    exists: () => true,
+  });
+  assert.deepEqual(f, [], '禁止を明記した人が警告されないこと');
+});
+
+test('禁止文の中のパスは手順ではない', () => {
+  const f = scan('Never read or execute `scripts/deprecated.sh`; it was removed.', {
+    scripts: new Set(['test']),
+    exists: () => false,
+  });
+  assert.deepEqual(f, [], '消えたファイルを「使うな」と書くのは正しい書き方');
+});
+
+test('禁止文でなければ従来どおり報告する', () => {
+  const f = scan('Run `scripts/deploy.sh` before merging.', {
+    scripts: new Set(['test']),
+    exists: () => false,
+  });
+  assert.equal(f.length, 1, '実際の手順は引き続き検出されること');
+});
